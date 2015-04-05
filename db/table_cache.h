@@ -53,7 +53,6 @@ class TableCache {
   const std::string dbname_;
   const Options* options_;
   Cache* cache_;
-  Cache* ssd_cache_;
 
 };
 

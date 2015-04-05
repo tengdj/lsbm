@@ -821,7 +821,8 @@ void sequentialread(double range)
       char key[100];
 	  //gettimeofday(&start,NULL);
       time(&now);
-	  if (difftime(now, begin) > FLAGS_countdown || (done>=reads_&&reads_>0)){
+
+	  if (difftime(now, begin) > FLAGS_countdown || (done>=reads_&&reads_>=0)){
 		    printf("%d I need to exit!\n",issequential);
     		break;
 	  }

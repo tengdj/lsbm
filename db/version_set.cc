@@ -38,11 +38,11 @@ uint64_t MaxBytesForLevel(int level) {
   uint64_t result = config::kL0_size * 1048576.0;  // Result for both level-0 and level-1
   //two phase compaction will have a different size distribution with normal compaction
   //for TPC, level 2 3 have the same size with level 1, and 4 5, 6 7... have the same size (dlsm::runtime::two_phase_compaction?3:1)
-
+/*
   if(level>2&&leveldb::runtime::two_phase_compaction)
   {
   	  result /= 2;
-  }
+  }*/
   while (level > (runtime::two_phase_compaction?2:1)) {
     result *= 10;
     level = level - (runtime::two_phase_compaction?2:1);
@@ -312,7 +312,7 @@ void Version::ForEachOverlapping(Slice user_key, Slice internal_key,
 Status Version::Get(const ReadOptions& options,
                     const LookupKey& k,
                     std::string* value,
-                    GetStats* stats) {
+                    GetStats* stats,int endlevel) {
   Slice ikey = k.internal_key();
   Slice user_key = k.user_key();
   const Comparator* ucmp = vset_->icmp_.user_comparator();
@@ -328,23 +328,30 @@ Status Version::Get(const ReadOptions& options,
   // in an smaller level, later levels are irrelevant.
   std::vector<FileMetaData*> tmp;
   FileMetaData* tmp2;
-  for (int level = 0; level < config::kNumLevels; level++) {
+  for (int level = 0; level < endlevel; level++) {
+
     size_t num_files = files_[level].size();
     if (num_files == 0) continue;
 
     // Get the list of files to search in this level
     FileMetaData* const* files = &files_[level][0];
     if (level == 0) {
+
       // Level-0 files may overlap each other.  Find all files that
       // overlap user_key and process them in order from newest to oldest.
       tmp.reserve(num_files);
       for (uint32_t i = 0; i < num_files; i++) {
+
         FileMetaData* f = files[i];
-        if (ucmp->Compare(user_key, f->smallest.user_key()) >= 0 &&
+        if (f != NULL && ucmp->Compare(user_key, f->smallest.user_key()) >= 0 &&
             ucmp->Compare(user_key, f->largest.user_key()) <= 0) {
           tmp.push_back(f);
         }
+
+
+
       }
+
       if (tmp.empty()) continue;
 
       std::sort(tmp.begin(), tmp.end(), NewestFirst);
@@ -368,6 +375,7 @@ Status Version::Get(const ReadOptions& options,
         }
       }
     }
+
 
     for (uint32_t i = 0; i < num_files; ++i) {
       if (last_file_read != NULL && stats->seek_file == NULL) {
@@ -404,7 +412,6 @@ Status Version::Get(const ReadOptions& options,
       }
     }
   }
-
   return Status::NotFound(Slice());  // Use an empty error message for speed
 }
 
@@ -489,7 +496,7 @@ int Version::GetRange(const ReadOptions& options,
          }
     }
 
-   fprintf(stderr,"number of files overlapped with level %d is %d/%d\n",level,tmpcount,num_files);
+   fprintf(stderr,"number of files overlapped with level %d is %d/%ld\n",level,tmpcount,num_files);
    totalfound = totalfound+tmpcount;
   }
   int count = 0;
@@ -1214,9 +1221,9 @@ void BasicVersionSet::printCurVersion(){
 	      	}*/
 	      	printf("plevel:%d   llevel:%d |",i,llevel);
 	          for(int j=0;j<current_->files_[i].size();j++){
-	          	printf("%d ",current_->files_[i][j]->number);
+	          	printf("%ld ",current_->files_[i][j]->number);
 	          }
-	          printf("\n",i,config::logicallevel(i));
+	          printf("\n");
 	  }
 }
 

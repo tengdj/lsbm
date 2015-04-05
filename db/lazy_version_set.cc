@@ -728,9 +728,9 @@ void LazyVersionSet::printCurVersion(){
 	      	}*/
 	      	printf("plevel:%d   llevel:%d |",i,llevel);
 	          for(int j=0;j<current_->files_[i].size();j++){
-	          	printf("%d ",current_->files_[i][j]->number);
+	          	printf("%ld ",current_->files_[i][j]->number);
 	          }
-	          printf("\n",i,config::logicallevel(i));
+	          printf("\n");
 	  }
 }
 

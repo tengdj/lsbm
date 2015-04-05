@@ -965,7 +965,6 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
 
           lazy_versions_->FilesCoveredInLevel(i,smallest,largest,&needdelete);
           for(int j=0;j<needdelete.size();j++){
-        	 printf("file %d is deleted from ");
         	 lazy_edit.DeleteFile(i,needdelete[j]->number);
           }
           needdelete.clear();
@@ -1216,8 +1215,11 @@ Status DBImpl::Get(const ReadOptions& options,
   MemTable* mem = mem_;
   MemTable* imm = imm_;
   Version* current;
+  Version* current_lazy;
   if(config::isdLSM()){
-	  current = lazy_versions_->current();
+	  current = versions_->current();
+	  current_lazy = lazy_versions_->current();
+	  current_lazy->Ref();
   }else{
 	  current = versions_->current();
   }
@@ -1238,7 +1240,18 @@ Status DBImpl::Get(const ReadOptions& options,
     } else if (imm != NULL && imm->Get(lkey, value, &s)) {
       // Done
     } else {
-      s = current->Get(options, lkey, value, &stats);
+      if(config::isdLSM()){
+    	  ReadOptions tmpoptions;
+    	  tmpoptions.fill_cache = false;
+    	  tmpoptions.verify_checksums = options.verify_checksums;
+    	  s = current->Get(tmpoptions,lkey,value,&stats,lazy_versions_->PhysicalEndLevel(2));
+    	  if(s.IsNotFound())
+    	  {
+             s = current_lazy->Get(options, lkey, value, &stats);
+    	  }
+      }else{
+    	  s = current->Get(options, lkey, value, &stats);
+      }
       have_stat_update = true;
     }
     mutex_.Lock();
@@ -1250,6 +1263,9 @@ Status DBImpl::Get(const ReadOptions& options,
   mem->Unref();
   if (imm != NULL) imm->Unref();
   current->Unref();
+  if(config::isdLSM()){
+	  current_lazy->Unref();
+  }
   return s;
 }
 

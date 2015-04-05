@@ -103,7 +103,7 @@ class VersionEdit {
   bool has_last_sequence_;
   //teng: save current target level
   bool has_target_plevel_;
-  std::vector< std::pair<int, uint32_t>> targetPLevel;
+  std::vector< std::pair<int, uint32_t> > targetPLevel;
   std::vector< std::pair<int, InternalKey> > compact_pointers_;
   DeletedFileSet deleted_files_;
   std::vector< std::pair<int, FileMetaData> > new_files_;

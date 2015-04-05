@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include <stdio.h>
 #include "leveldb/table.h"
 
 #include "leveldb/cache.h"
@@ -156,15 +157,13 @@ static void ReleaseBlock(void* arg, void* h) {
 
 // Convert an index iterator value (i.e., an encoded BlockHandle)
 // into an iterator over the contents of the corresponding block.
-static int tcounter = 0;
-
 Iterator* Table::BlockReader(void* arg,
                              const ReadOptions& options,
                              const Slice& index_value) {
   //teng: for test
   bool ssd_cheat = true;
   bool ssd_cache_on = true;
-  bool cache_on = true;
+  bool cache_on = false;
   Table* table = reinterpret_cast<Table*>(arg);
   Cache* block_cache = table->rep_->options.block_cache;
   Block* block = NULL;
@@ -209,32 +208,28 @@ Iterator* Table::BlockReader(void* arg,
     if(block != NULL&&block->size()==0){
        delete block;
        block = NULL;
+       if(ssd_cache_handle!=NULL){//error block got from ssd cache
+          ssd_block_cache->GetCache()->Release(ssd_cache_handle);
+          ssd_block_cache->GetCache()->Erase(key);
+          ssd_cache_handle = NULL;
+       }
+       if(cache_handle!=NULL){//error block got from ssd
+          block_cache->Release(cache_handle);
+          block_cache->Erase(key);
+          cache_handle = NULL;
+      }
     }
     //read from disk
     if ( block == NULL) {
-
-       if(ssd_cache_handle!=NULL){
-    	  ssd_block_cache->GetCache()->Release(ssd_cache_handle);
-    	  ssd_block_cache->GetCache()->Erase(key);
-       }
-       if(cache_handle!=NULL){
-    	  block_cache->Release(cache_handle);
-    	  block_cache->Erase(key);
-       }
-
-  	  //printf("get here 2\n");
       s = ReadBlock(table->rep_->file, options, handle, &contents);
-      //printf("leave here 2\n");
-
       if (s.ok()) {
         block = new Block(contents);
-
       }
     }
 
     //insert block into cache if necessary
     if (block != NULL && options.fill_cache) {//contents.cachable &&
-      //printf("get here\n");
+
       if (cache_on && block_cache != NULL) {
       //always insert into block_cache if missed
         if (cache_handle == NULL) {
@@ -292,9 +287,7 @@ Status Table::InternalGet(const ReadOptions& options, const Slice& k,
       // Not found
     } else {
       Iterator* block_iter = BlockReader(this, options, iiter->value());
-      //printf("get here 5\n");
       block_iter->Seek(k);
-      //printf("leave here 5\n");
       if (block_iter->Valid()) {
         (*saver)(arg, block_iter->key(), block_iter->value());
       }

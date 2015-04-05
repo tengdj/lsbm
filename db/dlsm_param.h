@@ -30,7 +30,7 @@ extern int bloom_bits_use;
 
 //make enough room for two phase compaction
 const static int LogicalLevelnum = 7*2+1;
-const static int levels_per_logical_level = 10;
+const static int levels_per_logical_level = 20;
 //level 0 + other levels with two phase
 const static int kNumLevels = (LogicalLevelnum-1)*levels_per_logical_level+1;
 
