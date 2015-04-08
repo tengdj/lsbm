@@ -50,6 +50,10 @@ inline bool isdLSM(){
 namespace runtime {
 
 extern bool two_phase_compaction;
+extern bool warming_up;
+inline bool isWarmingUp(){
+	return warming_up;
+}
 
 } // runtime
 

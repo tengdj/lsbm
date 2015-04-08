@@ -300,7 +300,7 @@ class Stats {
     }
     read_done_++;
 
-    FinishedSingleOp();
+    FinishedSingleOp(1);
   }
 
   void FinishedWriteOp() {
@@ -312,10 +312,10 @@ class Stats {
     }
     write_done_++;
 
-    FinishedSingleOp();
+    FinishedSingleOp(2);
   }
 
-  void FinishedSingleOp() {
+  void FinishedSingleOp(int rw) {
     if (FLAGS_histogram) {
       double now = Env::Default()->NowMicros();
       double micros = now - last_op_finish_;
@@ -337,8 +337,8 @@ class Stats {
       else if (next_report_ < 500000) next_report_ += 50000;
       else                            next_report_ += 100000;*/
       next_report_ += 1000;
-      fprintf(stderr, "... finished %d ops%30s\r", done_, "");
-      //fflush(stderr);
+      fprintf(stderr, "... finished %d %s\r", done_, rw==1?"reads":"writes");
+      fflush(stderr);
     }
 
     intv_end_ = Env::Default()->NowMicros();
@@ -540,7 +540,7 @@ class Benchmark {
 	if(FLAGS_ssd_cache_size >= (size_t)0){
 	   assert(FLAGS_ssd_cache_path != NULL);
 	   std::string cache_path = std::string(FLAGS_ssd_cache_path);
-	   ssd_cache_ = new SSDCache(cache_path,BLOCKSIZE,(FLAGS_ssd_cache_size/BLOCKSIZE+1)*200);
+	   ssd_cache_ = new SSDCache(cache_path,BLOCKSIZE,(FLAGS_ssd_cache_size*1024)/(BLOCKSIZE/1024));
 	}else{
 		ssd_cache_ = NULL;
 	}
@@ -743,10 +743,12 @@ double random()
 
 void RangeQuery(ThreadState* thread)
 {
-	sequentialread(FLAGS_range_size);
+	ReadOptions options;
+	options.fill_cache = false;
+	sequentialread(options, FLAGS_range_size);
 }
 
-void sequentialread(double range)
+void sequentialread(const ReadOptions options, double range)
 {
       int64_t bytes = 0;
       int count = 0;
@@ -769,13 +771,12 @@ void sequentialread(double range)
       std::string endstr(endch);
       Slice start(startstr);
       Slice end(endstr);
-
-      count = db_->GetRange(ReadOptions(),start,end);
+      count = db_->GetRange(options,start,end);
       range_query_mu_.Lock();
       range_total_ += count;
       range_query_mu_.Unlock();
 }
-
+//bool cached[110000];
   void RWRandom_Read(ThreadState* thread) {
 
     ReadOptions options;
@@ -814,11 +815,30 @@ void sequentialread(double range)
 	else {
 	  mygenerator = new generator::UniformIntegerGenerator(FLAGS_read_from,FLAGS_read_upto);
 	}
-	time(&begin);
+	uint64_t k = FLAGS_read_from;
+    char key[100];
+    int cachesize = ssd_cache_->FreeListSize();
+    int cur_cache_size = 0;
+    while(leveldb::runtime::isWarmingUp()){
 
+    	snprintf(key, sizeof(key), "user%019lld", generator::YCSBKey_hash(k++));
+        db_->Get(options,key,&value);
+        //cached[k] = true;
+        cur_cache_size = ssd_cache_->FreeListSize();
+        //(double)cur_cache_size/cachesize<=0.01 || ;
+        if(k>=FLAGS_read_upto){
+        	leveldb::runtime::warming_up = false;
+        }else{
+        	fprintf(stdout,"%10d\%10d current used cache is %f%\n",k,FLAGS_read_upto,100.0*(1.0-(double)cur_cache_size/cachesize));
+        	fflush(stdout);
+        }
+    }
+    k = FLAGS_read_from;
+	time(&begin);
+    int notfoundforcache = 0;
+    int foundnotcached = 0;
     while(true)
     {
-      char key[100];
 	  //gettimeofday(&start,NULL);
       time(&now);
 
@@ -832,8 +852,8 @@ void sequentialread(double range)
     	   Env::Default()->SleepForMicroseconds(FLAGS_countdown*1000000);
     	   break;
        }
-       uint64_t k;
-	   k = mygenerator->nextInt();
+       int ok = k;
+       k = (k+1)%FLAGS_read_upto+FLAGS_read_from; //mygenerator->nextInt();
        snprintf(key, sizeof(key), "user%019lld", generator::YCSBKey_hash(k));
        s = db_->Get(options, key, &value);
        isFound = s.ok();
@@ -841,8 +861,8 @@ void sequentialread(double range)
        done++;
        if (isFound) {
          found++;
-       }
 
+       }
        thread->stats.FinishedReadOp();
 
        rwrandom_read_mu_.Lock();
@@ -857,8 +877,10 @@ void sequentialread(double range)
 	    }*/
       }//random read
       else{
+
           long long range_count_tmp = 0;
-          sequentialread(FLAGS_range_size);
+          options.fill_cache = false;
+          sequentialread(options,FLAGS_range_size);
     	  range_query_mu_.Lock();
     	  range_count_tmp = range_count_;
     	  range_query_mu_.Unlock();
@@ -896,10 +918,13 @@ void sequentialread(double range)
     int bnum = 0;
     batch.Clear();
 
-    time(&begin);
+    while(leveldb::runtime::isWarmingUp()){
+    	//sleep 100ms and check warmup again to see if it already fill up the cache
+    	Env::Default()->SleepForMicroseconds(100000);
+    }
     int i = 0;
     int wnum = FLAGS_countdown * FLAGS_write_throughput;
-    if(FLAGS_writes>0)
+    if(FLAGS_writes>=0)
     	wnum=FLAGS_writes;
     else
     	wnum = -1;
@@ -923,7 +948,8 @@ void sequentialread(double range)
 	  Env::Default()->SleepForMicroseconds(FLAGS_countdown*1000000);
 	  return;
 	}
-	int count = 0;
+    time(&begin);
+
 	uint64_t k;
     while(true){
       char key[100];
@@ -932,7 +958,7 @@ void sequentialread(double range)
       time(&now);
 	  if (difftime(now, begin) >= FLAGS_countdown)
           break;
-      if(count>=wnum&&wnum>=0)
+      if(done>=wnum&&wnum>=0)
       {
     	  if (difftime(now, begin) > FLAGS_countdown){
 	            break;
@@ -944,7 +970,7 @@ void sequentialread(double range)
     	  }
       }
 
-      k = k+1;//mygenerator->nextInt();
+      k = (k+1)%FLAGS_write_upto+FLAGS_write_from;//mygenerator->nextInt();
       snprintf(key, sizeof(key), "user%019lld", generator::YCSBKey_hash(k));
       batch.Put(key, gen.Generate(value_size_));
       bytes += value_size_ + strlen(key);
@@ -971,7 +997,6 @@ void sequentialread(double range)
 	  { 
 	     Env::Default()->SleepForMicroseconds(write_latency-latency);
 	  }*/
-	  count++;
     }
 
     time(&now);
@@ -1078,6 +1103,8 @@ int main(int argc, char** argv) {
       leveldb::config::run_compaction = n;
     } else if (sscanf(argv[i], "--two_phase_compaction=%d%c", &n, &junk) == 1) {
         leveldb::runtime::two_phase_compaction = n;
+    } else if (sscanf(argv[i], "--warmup=%d%c", &n, &junk) == 1) {
+        leveldb::runtime::warming_up = n;
     } else if (strncmp(argv[i], "--monitor_log=", 14) == 0) {
       monitor_log = fopen(argv[i] + 14, "w");
 	} else if (strncmp(argv[i], "--workload=",11)==0) {

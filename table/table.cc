@@ -16,6 +16,7 @@
 #include "table/two_level_iterator.h"
 #include "util/coding.h"
 #include "util/ssd_cache.h"
+#include "db/dlsm_param.h"
 
 namespace leveldb {
 
@@ -155,11 +156,16 @@ static void ReleaseBlock(void* arg, void* h) {
   cache->Release(handle);
 }
 
+static int totalrequest = 0;
+static int memserve = 0;
+static int ssdserve = 0;
+static int hddserve = 0;
 // Convert an index iterator value (i.e., an encoded BlockHandle)
 // into an iterator over the contents of the corresponding block.
 Iterator* Table::BlockReader(void* arg,
                              const ReadOptions& options,
                              const Slice& index_value) {
+
   //teng: for test
   bool ssd_cheat = true;
   bool ssd_cache_on = true;
@@ -178,6 +184,8 @@ Iterator* Table::BlockReader(void* arg,
   // can add more features in the future.
 
   if (s.ok()) {
+	if(!runtime::isWarmingUp()&&options.fill_cache)
+	  totalrequest++ ;
     BlockContents contents;
     //build key for cache lookup
     char cache_key_buffer[16];
@@ -190,6 +198,8 @@ Iterator* Table::BlockReader(void* arg,
       cache_handle = block_cache->Lookup(key);
       if (cache_handle != NULL) {
         block = reinterpret_cast<Block*>(block_cache->Value(cache_handle));
+        if(!runtime::isWarmingUp()&&options.fill_cache)
+        memserve++;
       }
     }
     //check ssd_block_cache (in ssd cache)
@@ -201,22 +211,29 @@ Iterator* Table::BlockReader(void* arg,
         if (s.ok())
         {
         	block = new Block(contents);
+        	if(!runtime::isWarmingUp()&&options.fill_cache)
+        	ssdserve++;
         }
       }
     }
 
     if(block != NULL&&block->size()==0){
+
        delete block;
        block = NULL;
        if(ssd_cache_handle!=NULL){//error block got from ssd cache
           ssd_block_cache->GetCache()->Release(ssd_cache_handle);
           ssd_block_cache->GetCache()->Erase(key);
           ssd_cache_handle = NULL;
+          if(!runtime::isWarmingUp()&&options.fill_cache)
+          ssdserve--;
        }
        if(cache_handle!=NULL){//error block got from ssd
           block_cache->Release(cache_handle);
           block_cache->Erase(key);
           cache_handle = NULL;
+          if(!runtime::isWarmingUp()&&options.fill_cache)
+          memserve--;
       }
     }
     //read from disk
@@ -224,6 +241,8 @@ Iterator* Table::BlockReader(void* arg,
       s = ReadBlock(table->rep_->file, options, handle, &contents);
       if (s.ok()) {
         block = new Block(contents);
+        if(!runtime::isWarmingUp()&&options.fill_cache)
+        hddserve++;
       }
     }
 
@@ -262,6 +281,8 @@ Iterator* Table::BlockReader(void* arg,
   } else {
     iter = NewErrorIterator(s);
   }
+  if(!runtime::isWarmingUp()&&options.fill_cache)
+  printf("total: %10d memserve: %10d ssdserve: %10d hddserve:%10d\n",totalrequest,memserve,ssdserve,hddserve);
   return iter;
 }
 

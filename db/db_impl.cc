@@ -926,6 +926,7 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
       static_cast<long long>(compact->total_bytes));*/
 
   const int level = compact->compaction->level();
+  assert(level<=config::LogicalLevelnum);
   int startlevel = versions_->PhysicalStartLevel(level);
   int levelsize = (config::isSM()?config::levels_per_logical_level:1);
   int targetlevel = versions_->CompactionTargetLevel(level+1);
@@ -1244,7 +1245,7 @@ Status DBImpl::Get(const ReadOptions& options,
     	  ReadOptions tmpoptions;
     	  tmpoptions.fill_cache = false;
     	  tmpoptions.verify_checksums = options.verify_checksums;
-    	  s = current->Get(tmpoptions,lkey,value,&stats,lazy_versions_->PhysicalEndLevel(2));
+    	  s = current->Get(tmpoptions,lkey,value,&stats,2);
     	  if(s.IsNotFound())
     	  {
              s = current_lazy->Get(options, lkey, value, &stats);

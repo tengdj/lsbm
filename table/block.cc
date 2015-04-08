@@ -198,9 +198,12 @@ class Block::Iter : public Iterator {
       if (!ParseNextKey()) {
         return;
       }
+      //printf("get here\n");
       if (Compare(key_, target) >= 0) {
+    	//printf("leave here\n");
         return;
       }
+      //printf("leave here\n");
     }
   }
 

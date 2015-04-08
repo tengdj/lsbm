@@ -31,6 +31,8 @@ int bloom_bits_use = -1;
 namespace runtime{
 
 bool two_phase_compaction = false;
+bool warming_up = false;
+
 
 }
 

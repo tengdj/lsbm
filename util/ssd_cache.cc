@@ -85,13 +85,15 @@ Status SSDCache::WriteBlock(const int cache_slot, const Slice &key,const BlockCo
     assert(offset >= 0);
     int n = result->data.size();
     //write block content into cache
-    char *buf = new char[n];
+    //char *buf = new char[BLOCKSIZE];
     assert(n < BLOCKSIZE);
-    memcpy(buf, result->data.data(), result->data.size());
-
+	void *buf;
+	int ret = posix_memalign(&buf, 512, BLOCKSIZE);
+	assert(ret == 0);
+	memcpy(buf, result->data.data(), result->data.size());
     ssize_t bytes_written = write(fd_ssd_cache_, buf, BLOCKSIZE);
     assert(bytes_written >= 0);
-    delete buf;
+    free(buf);
     return Status::OK();
 }
 
@@ -108,9 +110,11 @@ Status SSDCache::ReadBlock(const int cache_slot, int block_size, BlockContents* 
     assert(offset >= 0);
 
     //read data from SSD cache
-    size_t n = static_cast<size_t>(block_size);
-	char *buf = new char[n];
-	ssize_t bytes_read = read(fd_ssd_cache_, buf, n);
+    size_t n = static_cast<size_t>(block_size);// + kBlockTrailerSize;
+    void *buf;
+    int ret = posix_memalign(&buf, 512, BLOCKSIZE);
+    assert(ret == 0);
+	ssize_t bytes_read = read(fd_ssd_cache_, buf, BLOCKSIZE);
 	assert(bytes_read >= 0);
 	assert(n <= BLOCKSIZE);
 
