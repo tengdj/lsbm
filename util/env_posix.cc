@@ -27,6 +27,7 @@
 #include "util/mutexlock.h"
 #include "util/posix_logger.h"
 
+
 namespace leveldb {
 
 namespace {
@@ -315,10 +316,13 @@ class PosixEnv : public Env {
                                      RandomAccessFile** result) {
     *result = NULL;
     Status s;
+    //teng: direct IO, no case is allowed
     int fd = open(fname.c_str(), O_RDONLY);
     if (fd < 0) {
       s = IOError(fname, errno);
-    } else if (mmap_limit_.Acquire()) {
+      //teng: disable mmap file, all file access is from posix random access file
+    } else if (false&&mmap_limit_.Acquire()) {
+
       uint64_t size;
       s = GetFileSize(fname, &size);
       if (s.ok()) {

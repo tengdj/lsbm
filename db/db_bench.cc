@@ -5,7 +5,7 @@
 #include <sys/types.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
+#include <sys/time.h>
 #include <ctime>
 #include <sys/types.h>
 #include <unistd.h>
@@ -820,18 +820,17 @@ void sequentialread(const ReadOptions options, double range)
     int cachesize = ssd_cache_->FreeListSize();
     int cur_cache_size = 0;
     while(leveldb::runtime::isWarmingUp()){
-
+    	if(k>=FLAGS_read_upto||reads_==0){
+    	  leveldb::runtime::warming_up = false;
+    	  break;
+    	}
     	snprintf(key, sizeof(key), "user%019lld", generator::YCSBKey_hash(k++));
         db_->Get(options,key,&value);
         //cached[k] = true;
         cur_cache_size = ssd_cache_->FreeListSize();
         //(double)cur_cache_size/cachesize<=0.01 || ;
-        if(k>=FLAGS_read_upto){
-        	leveldb::runtime::warming_up = false;
-        }else{
-        	fprintf(stdout,"%10d\%10d current used cache is %f%\n",k,FLAGS_read_upto,100.0*(1.0-(double)cur_cache_size/cachesize));
-        	fflush(stdout);
-        }
+        fprintf(stdout,"%10ld\%10ld current used cache is %f%\n",k,FLAGS_read_upto,100.0*(1.0-(double)cur_cache_size/cachesize));
+
     }
     k = FLAGS_read_from;
 	time(&begin);
@@ -839,7 +838,7 @@ void sequentialread(const ReadOptions options, double range)
     int foundnotcached = 0;
     while(true)
     {
-	  //gettimeofday(&start,NULL);
+	  gettimeofday(&start,NULL);
       time(&now);
 
 	  if (difftime(now, begin) > FLAGS_countdown || (done>=reads_&&reads_>=0)){
@@ -868,13 +867,13 @@ void sequentialread(const ReadOptions options, double range)
        rwrandom_read_mu_.Lock();
        rwrandom_read_completed++;
        rwrandom_read_mu_.Unlock();
-        /*
-	    gettimeofday(&end,NULL);
-	    latency = (end.tv_sec-start.tv_sec)*1000000+(end.tv_usec-start.tv_usec);
-	    if(FLAGS_read_throughput>0&&read_latency>latency)
-	    {
-	     Env::Default()->SleepForMicroseconds(read_latency-latency);
-	    }*/
+
+	   gettimeofday(&end,NULL);
+	   latency = (end.tv_sec-start.tv_sec)*1000000+(end.tv_usec-start.tv_usec);
+	   if(FLAGS_read_throughput>0&&read_latency>latency)
+	   {
+	    Env::Default()->SleepForMicroseconds(read_latency-latency);
+	   }
       }//random read
       else{
 
@@ -953,8 +952,7 @@ void sequentialread(const ReadOptions options, double range)
 	uint64_t k;
     while(true){
       char key[100];
-      /*
-	  gettimeofday(&start,NULL);*/
+	  gettimeofday(&start,NULL);
       time(&now);
 	  if (difftime(now, begin) >= FLAGS_countdown)
           break;
@@ -970,7 +968,7 @@ void sequentialread(const ReadOptions options, double range)
     	  }
       }
 
-      k = (k+1)%FLAGS_write_upto+FLAGS_write_from;//mygenerator->nextInt();
+      k = (k+1);//%FLAGS_write_upto+FLAGS_write_from;//mygenerator->nextInt();
       snprintf(key, sizeof(key), "user%019lld", generator::YCSBKey_hash(k));
       batch.Put(key, gen.Generate(value_size_));
       bytes += value_size_ + strlen(key);
@@ -990,13 +988,13 @@ void sequentialread(const ReadOptions options, double range)
         }
     	thread->stats.FinishedWriteOp();
 	    rwrandom_write_completed++;
-      /*
+
 	  gettimeofday(&end,NULL);
 	  latency = (end.tv_sec-start.tv_sec)*1000000+(end.tv_usec-start.tv_usec);
 	  if(write_latency>latency&&FLAGS_write_throughput>0)
 	  { 
 	     Env::Default()->SleepForMicroseconds(write_latency-latency);
-	  }*/
+	  }
     }
 
     time(&now);
