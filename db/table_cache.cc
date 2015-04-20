@@ -121,15 +121,18 @@ Status TableCache::Get(const ReadOptions& options,
 void TableCache::Evict(uint64_t file_number, uint64_t file_size) {
   char buf[sizeof(file_number)];
   EncodeFixed64(buf, file_number);
+
   Cache::Handle* handle = NULL;
   Status s = FindTable(file_number, file_size, &handle);
-  if(s.ok() && options_->ssd_block_cache!=NULL){
-    Table* t = reinterpret_cast<TableAndFile*>(cache_->Value(handle))->table;
-    s = t->EvictSSDCache();
-  }
-  if(!s.ok()){
 
+  if(s.ok() && (options_->ssd_block_cache!=NULL||options_->block_cache!=NULL)){
+    Table* t = reinterpret_cast<TableAndFile*>(cache_->Value(handle))->table;
+    s = t->EvictBlockCache();
   }
+  if(handle!=NULL){
+	 cache_->Release(handle);
+  }
+
   cache_->Erase(Slice(buf, sizeof(buf)));
 }
 

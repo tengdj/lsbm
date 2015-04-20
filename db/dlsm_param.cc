@@ -11,10 +11,10 @@ namespace leveldb{
 
 namespace config{
 
-const char *primary_storage_path;
+const char *db_path;
 int dbmode;
 
-//teng: target file size, default 2 MB
+//teng: target file size, default 8 MB
 int kTargetFileSize = 8 * 1048576;
 
 //teng: level 0 size, default 100 M
@@ -26,12 +26,18 @@ bool run_compaction = true;
 //teng: bloom filter in use
 int bloom_bits_use = -1;
 
+//teng: end level for dlsm mode
+int dlsm_end_level = 6;
+
 }
 
 namespace runtime{
 
-bool two_phase_compaction = false;
-bool warming_up = false;
+bool two_phase_compaction = true;
+int warm_up_status = 0;
+bool need_warm_up = false;
+bool print_version_info = false;
+int hitratio_internal = 100;
 
 
 }

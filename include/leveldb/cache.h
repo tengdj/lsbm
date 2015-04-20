@@ -81,6 +81,8 @@ class Cache {
   // its cache keys.
   virtual uint64_t NewId() = 0;
 
+  virtual uint64_t Used() = 0;
+
  private:
   void LRU_Remove(Handle* e);
   void LRU_Append(Handle* e);

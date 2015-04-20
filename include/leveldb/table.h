@@ -56,7 +56,7 @@ class Table {
   // be close to the file length.
   uint64_t ApproximateOffsetOf(const Slice& key) const;
 
-  Status EvictSSDCache();
+  Status EvictBlockCache();
 
  private:
   struct Rep;

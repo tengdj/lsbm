@@ -171,7 +171,7 @@ DBImpl::~DBImpl() {
   // Wait for background work to finish
   mutex_.Lock();
   shutting_down_.Release_Store(this);  // Any non-NULL value is ok
-  while (bg_compaction_scheduled_) {
+  while (bg_compaction_scheduled_ && leveldb::config::run_compaction) {
     bg_cv_.Wait();
   }
   mutex_.Unlock();
@@ -691,7 +691,10 @@ void DBImpl::MaybeScheduleCompaction() {
     // No work to be done
   } else {
     bg_compaction_scheduled_ = true;
-    env_->Schedule(&DBImpl::BGWork, this);
+    if(config::run_compaction){
+       env_->Schedule(&DBImpl::BGWork, this);
+    }
+
   }
 }
 
@@ -935,7 +938,7 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
   //teng: latter for secondary set
 
 
-  printf("compact from logical level %d to logical level %d, actually to physical level %d\n",level, level+1,targetlevel);
+  //printf("compact from logical level %d to logical level %d, actually to physical level %d\n",level, level+1,targetlevel);
 
   for (size_t i = 0; i < compact->outputs.size(); i++) {
     const CompactionState::Output& out = compact->outputs[i];
@@ -955,6 +958,7 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
       for(int i=0;i<compaction->num_input_files(0);i++){
     	   file = compaction->input(0,i);
     	   inputs.push_back(file);
+    	   if(level+1 <= config::dlsm_end_level)
            lazy_edit.AddFile(lazy_targetlevel,file->number,file->file_size,file->smallest,file->largest);
       }
       InternalKey smallest,largest;
@@ -1245,10 +1249,12 @@ Status DBImpl::Get(const ReadOptions& options,
     	  ReadOptions tmpoptions;
     	  tmpoptions.fill_cache = false;
     	  tmpoptions.verify_checksums = options.verify_checksums;
-    	  s = current->Get(tmpoptions,lkey,value,&stats,2);
-    	  if(s.IsNotFound())
-    	  {
-             s = current_lazy->Get(options, lkey, value, &stats);
+    	  s = current->Get(tmpoptions,lkey,value,&stats,0,2);
+    	  if(s.IsNotFound()){
+             s = current_lazy->Get(options, lkey, value, &stats ,lazy_versions_->PhysicalStartLevel(3), lazy_versions_->PhysicalEndLevel(config::dlsm_end_level));
+    	  }
+    	  if(s.IsNotFound()){
+    		 s = current->Get(options,lkey,value,&stats,config::dlsm_end_level+1);
     	  }
       }else{
     	  s = current->Get(options, lkey, value, &stats);

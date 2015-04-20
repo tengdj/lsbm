@@ -712,6 +712,9 @@ int LazyVersionSet::PhysicalEndLevel(int llevel){
 
 //teng: print all versions
 void LazyVersionSet::printCurVersion(){
+	  if(!leveldb::runtime::print_version_info){
+		  return;
+	  }
 	  printf("------------------------------------------------------------------------\n");
 	  int max = config::kNumLevels-1;
 	  for(;max>=0;){

@@ -102,7 +102,7 @@ class Version {
     int seek_file_level;
   };
   Status Get(const ReadOptions&, const LookupKey& key, std::string* val,
-             GetStats* stats,const int endlevel=config::kNumLevels);
+             GetStats* stats,const int startlevel=0, const int endlevel=config::kNumLevels-1);
 
   //teng: get range
   int GetRange(const ReadOptions& options,

@@ -124,6 +124,7 @@ int FindFile(const InternalKeyComparator& icmp,
   while (left < right) {
     uint32_t mid = (left + right) / 2;
     const FileMetaData* f = files[mid];
+
     if (icmp.InternalKeyComparator::Compare(f->largest.Encode(), key) < 0) {
       // Key at "mid.largest" is < "target".  Therefore all
       // files at or before "mid" are uninteresting.
@@ -312,7 +313,9 @@ void Version::ForEachOverlapping(Slice user_key, Slice internal_key,
 Status Version::Get(const ReadOptions& options,
                     const LookupKey& k,
                     std::string* value,
-                    GetStats* stats,int endlevel) {
+                    GetStats* stats,
+                    int startlevel,
+                    int endlevel) {
   Slice ikey = k.internal_key();
   Slice user_key = k.user_key();
   const Comparator* ucmp = vset_->icmp_.user_comparator();
@@ -328,7 +331,7 @@ Status Version::Get(const ReadOptions& options,
   // in an smaller level, later levels are irrelevant.
   std::vector<FileMetaData*> tmp;
   FileMetaData* tmp2;
-  for (int level = 0; level < endlevel; level++) {
+  for (int level = startlevel; level <= endlevel; level++) {
 
     size_t num_files = files_[level].size();
     if (num_files == 0) continue;
@@ -418,7 +421,7 @@ Status Version::Get(const ReadOptions& options,
 static int readFileinRange(int fnumber, Slice start,Slice end) {
 
 	char name[100];
-	sprintf(name,"%s/%06d.ldb",leveldb::config::primary_storage_path,fnumber);
+	sprintf(name,"%s/%06d.ldb",leveldb::config::db_path,fnumber);
 	std::string fname(name);
 
 	int count = 0;
@@ -462,7 +465,7 @@ static int readFileinRange(int fnumber, Slice start,Slice end) {
     return count;
 }
 static int range_query_num=0;
-
+static port::Mutex range_mu_;
 int Version::GetRange(const ReadOptions& options,
                     const LookupKey &lkstart,
                     const LookupKey &lkend,
@@ -478,11 +481,9 @@ int Version::GetRange(const ReadOptions& options,
 
   std::vector<FileMetaData*> tmp;
   FileMetaData* tmp2;
-  int totalfound = 0;
   for (int level = 0; level < level_num_; level++) {
 
     size_t num_files = files_[level].size();
-   // printf("%d\n",num_files);
     if (num_files == 0) continue;
     // Get the list of files to search in this level
     int tmpcount = 0;
@@ -495,24 +496,24 @@ int Version::GetRange(const ReadOptions& options,
                 tmpcount++;
          }
     }
-
-   fprintf(stderr,"number of files overlapped with level %d is %d/%ld\n",level,tmpcount,num_files);
-   totalfound = totalfound+tmpcount;
+   //fprintf(stderr,"number of files overlapped with level %d is %d/%ld\n",level,tmpcount,num_files);
   }
   int count = 0;
-  int total = 0;
-  int readbytes = 0;
+  int totalfound = 0;
+  int found = 0;
   for(int i=0;i<tmp.size();i++)
   {
 	  FileMetaData* f = tmp[i];
-	  readbytes = readFileinRange(f->number,start, end);
-	  if(readbytes>0){
+	  found = readFileinRange(f->number,start, end);
+	  if(found>0){
 	  count++;
-	  total =total + readbytes;
+	  totalfound = totalfound + found;
 	  }
   }
-  fprintf(stderr,"%d files overlap with this key range, and %d records are found! %d\n",count,total,range_query_num++);
-  return total;
+  range_mu_.Lock();
+  fprintf(stderr,"%d files overlap with this key range, and %d records are found! %d\n",count,totalfound,range_query_num++);
+  range_mu_.Unlock();
+  return totalfound;
 }
 
 bool Version::UpdateStats(const GetStats& stats) {
@@ -1205,6 +1206,9 @@ void VersionSet::Finalize(Version* v) {
 }
 //teng: print current version
 void BasicVersionSet::printCurVersion(){
+	  if(!leveldb::runtime::print_version_info){
+		  return;
+	  }
 	  printf("------------------------------------------------------------------------\n");
 	  int max = config::kNumLevels-1;
 	  for(;max>=0;){

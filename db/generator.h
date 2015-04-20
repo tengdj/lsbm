@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <iostream>
+#include <limits.h>
 
 /**
  * An expression that generates a sequence of string values, following some distribution (Uniform, Zipfian, Sequential, etc.)
@@ -212,13 +213,16 @@ public:
 class CounterGenerator:public IntegerGenerator
 {
 	int counter;
+	int max;
 	/**
 	 * Create a counter that starts at countstart
 	 */
 public:
-	CounterGenerator(int countstart):counter(countstart)
+	CounterGenerator(int countstart, int countend=INT_MAX):counter(countstart),max(countend)
 	{
+		counter=countstart>0?countstart:0;
 		IntegerGenerator::setLastInt(counter-1);
+		max = countend>counter?countend:INT_MAX;
 	}
 
 	/**
@@ -227,7 +231,7 @@ public:
 	 */
 	int nextInt()
 	{
-		int ret = counter++;
+		int ret = (counter++)%max;
 		IntegerGenerator::setLastInt(ret);
 		//std::cout<<"nextint:"<<ret<<std::endl;
 		return ret;
@@ -430,8 +434,8 @@ public:
 		 * @param itemcount The number of items in the distribution.
 		 * @return The next item in the sequence.
 		 */
-long nextLong(long itemcount)
-{
+   long nextLong(long itemcount)
+   {
 			//from "Quickly Generating Billion-Record Synthetic Databases", Jim Gray et al, SIGMOD 1994
            // std::cout<<"got here"<<std::endl;
 			if (itemcount!=countforzeta)
@@ -659,12 +663,14 @@ public:
 		_lb=lb;
 		_ub=ub;
 		_interval=_ub-_lb+1;
+		srand((unsigned)time(NULL));
 	}
+
 
 	int nextInt()
 	{
-		//srand((unsigned)time(0));
-		int ret=rand()%_interval+_lb;
+		double r = (double)(rand()/(double)RAND_MAX);
+		int ret=r*_interval+_lb;
 		IntegerGenerator::setLastInt(ret);
 		return ret;
 	}

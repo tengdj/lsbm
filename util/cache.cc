@@ -147,7 +147,9 @@ class LRUCache {
   Cache::Handle* Lookup(const Slice& key, uint32_t hash);
   void Release(Cache::Handle* handle);
   void Erase(const Slice& key, uint32_t hash);
-
+  uint64_t getUsage(){
+	  return (uint64_t)usage_;
+  }
  private:
   void LRU_Remove(LRUHandle* e);
   void LRU_Append(LRUHandle* e);
@@ -313,6 +315,13 @@ class ShardedLRUCache : public Cache {
   virtual uint64_t NewId() {
     MutexLock l(&id_mutex_);
     return ++(last_id_);
+  }
+  uint64_t Used(){
+	  uint64_t usage = 0;
+	  for (int s = 0; s < kNumShards; s++) {
+	        usage += shard_[s].getUsage();
+	  }
+	  return usage;
   }
 };
 
