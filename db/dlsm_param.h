@@ -70,7 +70,7 @@ inline bool needWarmUp(){
 }
 
 extern bool print_version_info;
-extern int hitratio_internal;
+extern int hitratio_interval;
 
 } // runtime
 

@@ -161,7 +161,7 @@ static double intv_start_;
 static leveldb::port::Mutex intv_mu_;
 static leveldb::port::Mutex random_read_mu_;
 
-static int reduce_ratio = 1;
+static int hot_ratio = 1;
 
 static int FLAGS_num = 0;
 static int FLAGS_read_portion = 100;
@@ -666,18 +666,24 @@ class Benchmark {
 
 	/*read_latency is the overall latency, latency for each thread should longer*/
 
-    const int write_thread = (FLAGS_writes==0||FLAGS_write_throughput==0)?0:1;
-    const int random_read_thread = (FLAGS_random_reads==0||FLAGS_read_throughput==0)?0:FLAGS_random_threads;
-    const int threads = (FLAGS_num ==0 || FLAGS_throughput==0)?0:1;
-	read_latency = read_latency*(random_read_thread);
-    if(random_read_thread==0){
-    	runtime::need_warm_up = false;
+    int write_thread,random_read_thread,threads,range_read_thread;
+
+	if(method==&Benchmark::ReadWrite){//mix mode
+    	write_thread = 0;
+    	random_read_thread = 0;
+    	threads = (FLAGS_num ==0 || FLAGS_throughput==0)?0:1;
+    }else{//separate mode
+    	write_thread = (FLAGS_writes==0||FLAGS_write_throughput==0)?0:1;
+    	random_read_thread = (FLAGS_random_reads==0||FLAGS_read_throughput==0)?0:FLAGS_random_threads;
+    	threads=0;
+    	read_latency = read_latency*(random_read_thread);
     }
-    const int range_read_thread = (FLAGS_range_reads==0)?0:FLAGS_range_threads;
-    int n = write_thread+random_read_thread+range_read_thread;;
-    if(method==&Benchmark::ReadWrite){
-        	n = 1;
+    range_read_thread = (FLAGS_range_reads==0)?0:FLAGS_range_threads;
+    if(random_read_thread==0&&threads==0){
+       	runtime::need_warm_up = false;
     }
+
+    int n = write_thread+random_read_thread+range_read_thread+threads;
   	Random rand_(FLAGS_random_seed);
     SharedState shared;
     shared.total = n;
@@ -691,16 +697,39 @@ class Benchmark {
 	intv_start_ = Env::Default()->NowMicros();
 
     ThreadArg* arg = new ThreadArg[n];
-    for (int i = 0; i < n; i++) {
+    int i=0;
+    for (; i < write_thread; i++) {
       arg[i].bm = this;
-      arg[i].method = (method==&Benchmark::ReadWrite)?&Benchmark::ReadWrite
-    		  :(i<write_thread?&Benchmark::Random_Write:(i<write_thread+random_read_thread?&Benchmark::Random_Read:&Benchmark::Range_Read));
+      arg[i].method = &Benchmark::Random_Write;
       arg[i].shared = &shared;
       arg[i].thread = new ThreadState(i, &rand_);
       arg[i].thread->shared = &shared;
       Env::Default()->StartThread(ThreadBody, &arg[i]);
     }
-
+    for (; i < write_thread+random_read_thread; i++) {
+      arg[i].bm = this;
+      arg[i].method = &Benchmark::Random_Read;
+      arg[i].shared = &shared;
+      arg[i].thread = new ThreadState(i, &rand_);
+      arg[i].thread->shared = &shared;
+      Env::Default()->StartThread(ThreadBody, &arg[i]);
+    }
+    for (; i < write_thread+random_read_thread+range_read_thread; i++) {
+      arg[i].bm = this;
+      arg[i].method = &Benchmark::Range_Read;
+      arg[i].shared = &shared;
+      arg[i].thread = new ThreadState(i, &rand_);
+      arg[i].thread->shared = &shared;
+      Env::Default()->StartThread(ThreadBody, &arg[i]);
+    }
+    for (; i < n; i++) {
+      arg[i].bm = this;
+      arg[i].method =&Benchmark::ReadWrite;
+      arg[i].shared = &shared;
+      arg[i].thread = new ThreadState(i, &rand_);
+      arg[i].thread->shared = &shared;
+      Env::Default()->StartThread(ThreadBody, &arg[i]);
+    }
     shared.mu.Lock();
     while (shared.num_initialized < n) {
       shared.cv.Wait();
@@ -798,7 +827,7 @@ void Random_Read(ThreadState* thread) {
 	random_read_mu_.Unlock();
 	if(startwarmup){
 		//align k
-		int k = (FLAGS_read_from/reduce_ratio)*reduce_ratio;
+		int k = (FLAGS_read_from/hot_ratio)*hot_ratio;
 		uint64_t cachesize = FLAGS_mem_cache_size-cache_->Used();
 		//int cachesize = cache_->;
 		const int upto = FLAGS_read_upto;
@@ -806,7 +835,7 @@ void Random_Read(ThreadState* thread) {
 		    if(k>=FLAGS_read_upto||random_reads_==0){
 		      break;
 		    }
-		    k += reduce_ratio;
+		    k += hot_ratio;
 		    snprintf(key, sizeof(key), "user%019lld", generator::YCSBKey_hash(k));
 		    db_->Get(options,key,&value);
 		    fprintf(stdout,"%10d\%10d current used cache is %f\n",k,upto,100.0*((double)cache_->Used()/cachesize));
@@ -838,7 +867,7 @@ void Random_Read(ThreadState* thread) {
     	   Env::Default()->SleepForMicroseconds(FLAGS_countdown*1000000);
     	   break;
        }
-       k = (mygenerator->nextInt()/reduce_ratio)*reduce_ratio;
+       k = (mygenerator->nextInt()/hot_ratio)*hot_ratio;
        snprintf(key, sizeof(key), "user%019lld", generator::YCSBKey_hash(k));
        s = db_->Get(options, key, &value);
        isFound = s.ok();
@@ -1096,21 +1125,21 @@ void Range_Read(ThreadState* thread) {
   	bool startwarmup = false;
   	if(runtime::needWarmUp()){
   	  leveldb::runtime::warm_up_status = 1;
-  	  int k = (FLAGS_read_from/reduce_ratio)*reduce_ratio;
+  	  int k = (FLAGS_read_from/hot_ratio)*hot_ratio;
+  	  int kk = k;
   	  uint64_t cachesize = FLAGS_mem_cache_size-cache_->Used();
-      const int upto = FLAGS_read_upto;
   	  while(true){
-  		//k>=FLAGS_read_upto||FLAGS_num==0||;
-  		if(((double)cache_->Used()/cachesize)>0.9){
+  		//||FLAGS_num==0||;
+  		if(((double)cache_->Used()/cachesize)>0.9||kk>=FLAGS_read_upto){
   		  break;
   		}
 
   		snprintf(key, sizeof(key), "user%019lld", generator::YCSBKey_hash(k));
-  		//k += reduce_ratio;
+  		kk += hot_ratio;
   		k = readgenerator->nextInt();
   		db_->Get(options,key,&value);
   		//fprintf(stdout,"%10d\%10d current used cache is %f\n",k,upto,100.0*((double)cache_->Used()/cachesize));
-  		fprintf(stdout,"current used cache is %f%%\n",100.0*((double)cache_->Used()/cachesize));
+  		fprintf(stdout,"%d/%d current used cache is %f%%\n",kk,FLAGS_read_upto, 100.0*((double)cache_->Used()/cachesize));
 
       }
   	  leveldb::runtime::warm_up_status = 2;
@@ -1129,7 +1158,7 @@ void Range_Read(ThreadState* thread) {
   	    }
         isread = random()*100<=FLAGS_read_portion?true:false;
         if(isread){//read
-         k = (readgenerator->nextInt()/reduce_ratio)*reduce_ratio;
+         k = (readgenerator->nextInt()/hot_ratio)*hot_ratio;
          snprintf(key, sizeof(key), "user%019lld", generator::YCSBKey_hash(k));
          s = db_->Get(options, key, &value);
          isFound = s.ok();
@@ -1285,8 +1314,11 @@ int main(int argc, char** argv) {
         FLAGS_range_threads = n;
     } else if (sscanf(argv[i], "--range_reads=%d%c", &n, &junk) == 1) {
     	FLAGS_range_reads = n;
-    } else if (sscanf(argv[i], "--reduce_ratio=%d%c", &n, &junk) == 1) {
-    	reduce_ratio = n;
+    } else if (sscanf(argv[i], "--hot_ratio=%d%c", &n, &junk) == 1) {
+    	if(n!=0){
+    		hot_ratio = 100/n;
+    	}
+
     } else if (sscanf(argv[i], "--num=%d%c", &n, &junk) == 1) {
         FLAGS_num = n;
     } else if (sscanf(argv[i], "--throughput=%d%c", &n, &junk) == 1) {
@@ -1295,8 +1327,8 @@ int main(int argc, char** argv) {
     		  readwrite_latency = 1000000/FLAGS_throughput;
     } else if (sscanf(argv[i], "--read_portion=%d%c", &n, &junk) == 1) {
     	FLAGS_read_portion = n;
-    } else if (sscanf(argv[i], "--hitratio_internal=%d%c", &n, &junk) == 1) {
-    	leveldb::runtime::hitratio_internal = n;
+    } else if (sscanf(argv[i], "--hitratio_interval=%d%c", &n, &junk) == 1) {
+    	leveldb::runtime::hitratio_interval = n;
     }  else if (sscanf(argv[i], "--zipfian_constant=%lf%c", &d, &junk) == 1) {
         FLAGS_zipfian_constant = d;
     }  else if (sscanf(argv[i], "--dbmode=%d%c", &n, &junk) == 1) {

@@ -315,7 +315,7 @@ Iterator* Table::BlockReader(void* arg,
 	ssdserve += tmpssdserve;
 	hddserve += tmphddserve;
 	if(totalrequest>=nextprint){
-		nextprint += runtime::hitratio_internal;
+		nextprint += runtime::hitratio_interval;
 		int gaptotalrequest = totalrequest - prevtotalrequest;
 		int gapmemserve = memserve - prevmemserve;
 		int gapssdserve = ssdserve - prevssdserve;

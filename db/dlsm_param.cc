@@ -37,8 +37,7 @@ bool two_phase_compaction = true;
 int warm_up_status = 0;
 bool need_warm_up = false;
 bool print_version_info = false;
-int hitratio_internal = 100;
-
+int hitratio_interval = 100;
 
 }
 
