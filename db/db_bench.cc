@@ -169,7 +169,14 @@ static int FLAGS_throughput = 0;
 
 static int readwrite_complete = 0;
 static double FLAGS_zipfian_constant = 0.99;
+static bool FLAGS_hash_key = true;
 
+static int rw_interval = 1;
+static int last_read = 0;
+static int last_write = 0;
+static int last_rw = 0;
+
+static int latency_gap = 50;
 /************* Extened Flags (END) *****************/
 
 namespace leveldb {
@@ -828,6 +835,7 @@ void Random_Read(ThreadState* thread) {
 	if(startwarmup){
 		//align k
 		int k = (FLAGS_read_from/hot_ratio)*hot_ratio;
+		long long hashkey;
 		uint64_t cachesize = FLAGS_mem_cache_size-cache_->Used();
 		//int cachesize = cache_->;
 		const int upto = FLAGS_read_upto;
@@ -836,9 +844,10 @@ void Random_Read(ThreadState* thread) {
 		      break;
 		    }
 		    k += hot_ratio;
-		    snprintf(key, sizeof(key), "user%019lld", generator::YCSBKey_hash(k));
+		    hashkey=FLAGS_hash_key?generator::YCSBKey_hash(k):k;
+		    snprintf(key, sizeof(key), "user%019lld",hashkey);
 		    db_->Get(options,key,&value);
-		    fprintf(stdout,"%10d\%10d current used cache is %f\n",k,upto,100.0*((double)cache_->Used()/cachesize));
+		    fprintf(stderr,"%10d\%10d current used cache is %f\n",k,upto,100.0*((double)cache_->Used()/cachesize));
 
 	   }
 	   runtime::warm_up_status = 2;
@@ -854,10 +863,14 @@ void Random_Read(ThreadState* thread) {
     int notfoundforcache = 0;
     int foundnotcached = 0;
     int k=0;
+    long long hashkey;
+    time_t start_intv = 0, now_intv = 0;
     gettimeofday(&start,NULL);
     while(true)
     {
-
+       if(start_intv==0){
+    	   time(&start_intv);
+       }
        time(&now);
 	   if (difftime(now, begin) > FLAGS_countdown || (rwrandom_read_completed>=random_reads_&&random_reads_>=0)){
     		break;
@@ -868,7 +881,8 @@ void Random_Read(ThreadState* thread) {
     	   break;
        }
        k = (mygenerator->nextInt()/hot_ratio)*hot_ratio;
-       snprintf(key, sizeof(key), "user%019lld", generator::YCSBKey_hash(k));
+	   hashkey=FLAGS_hash_key?generator::YCSBKey_hash(k):k;
+       snprintf(key, sizeof(key), "user%019lld",hashkey);
        s = db_->Get(options, key, &value);
        isFound = s.ok();
        done++;
@@ -879,18 +893,23 @@ void Random_Read(ThreadState* thread) {
 
        random_read_mu_.Lock();
        rwrandom_read_completed++;
+       time(&now_intv);
+       if(difftime(now_intv,start_intv)>=rw_interval){
+    	   printf("readop: finishd %d ops in %d sec, cache used: %ld timepassed: %d\n",rwrandom_read_completed-last_read,rw_interval,cache_->Used(),(int)difftime(now_intv,begin));
+    	   last_read = rwrandom_read_completed;
+    	   time(&start_intv);
+       }
        random_read_mu_.Unlock();
-       if(done%50==0){
+       if(done%latency_gap==0){
 	      gettimeofday(&end,NULL);
 	      latency = (end.tv_sec-start.tv_sec)*1000000+(end.tv_usec-start.tv_usec);
-	      //printf("get here: %d %d\n",latency,read_latency);
-	      if(FLAGS_read_throughput>0&&50*read_latency>latency)
+	      if(FLAGS_read_throughput>0&&latency_gap*read_latency>latency)
 	      {
-	       //printf("get here\n");
-	       Env::Default()->SleepForMicroseconds(read_latency*50-latency);
+	       Env::Default()->SleepForMicroseconds(read_latency*latency_gap-latency);
 	      }
 	      gettimeofday(&start,NULL);
        }
+
 
     }//end while
 
@@ -899,7 +918,7 @@ void Random_Read(ThreadState* thread) {
     thread->stats.AddMessage(msg);
 
     time(&now);
-    fprintf(stderr, "rwrandom completes %d read ops (out of %d) in %.3f seconds, %d found\n",
+    printf("completes %d read ops (out of %d) in %.3f seconds, %d found\n",
       done, rwrandom_read_completed, difftime(now, begin), found);
 
 }
@@ -960,7 +979,7 @@ void Range_Read(ThreadState* thread) {
       done++;
     }//end while
 
-    fprintf(stderr,"\ntotally operated %d range queries (out of %lld), and %d results (out of %d) are found\n"
+    printf("\ntotally operated %d range queries (out of %lld), and %d results (out of %d) are found\n"
     		,done,range_query_completed_,count,range_total_);
 }
 /*modification required for key*/
@@ -1008,10 +1027,15 @@ void Range_Read(ThreadState* thread) {
     time(&begin);
 
 	uint64_t k;
+	long long hashkey;
+	time_t start_intv = 0, now_intv = 0;
 	gettimeofday(&start,NULL);
     while(true){
       char key[100];
       time(&now);
+      if(start_intv==0){
+    	  time(&start_intv);
+      }
 	  if (difftime(now, begin) >= FLAGS_countdown)
           break;
       if(done>=writes_&&writes_>=0)
@@ -1027,7 +1051,8 @@ void Range_Read(ThreadState* thread) {
       }
 
       k = mygenerator->nextInt();
-      snprintf(key, sizeof(key), "user%019lld", generator::YCSBKey_hash(k));
+	  hashkey=FLAGS_hash_key?generator::YCSBKey_hash(k):k;
+      snprintf(key, sizeof(key), "user%019lld", hashkey);
       batch.Put(key, gen.Generate(value_size_));
       bytes += value_size_ + strlen(key);
       bnum ++;
@@ -1046,12 +1071,18 @@ void Range_Read(ThreadState* thread) {
         }
     	thread->stats.FinishedWriteOp();
 	    rwrandom_write_completed++;
-      if(done%50==0){
+	  time(&now_intv);
+	  if(difftime(now_intv,start_intv)>=rw_interval){
+	     printf("writeop: finishd %d ops in %d sec, timepassed: %d\n",rwrandom_write_completed-last_write,rw_interval,(int)difftime(now_intv,begin));
+	     last_write = rwrandom_write_completed;
+	     time(&start_intv);
+	  }
+      if(done%latency_gap==0){
 	    gettimeofday(&end,NULL);
 	    latency = (end.tv_sec-start.tv_sec)*1000000+(end.tv_usec-start.tv_usec);
-	    if(write_latency>latency&&FLAGS_write_throughput>0)
+	    if(write_latency*latency_gap>latency&&FLAGS_write_throughput>0)
 	    {
-	       Env::Default()->SleepForMicroseconds(write_latency*50-latency);
+	       Env::Default()->SleepForMicroseconds(write_latency*latency_gap-latency);
 	    }
 		gettimeofday(&start,NULL);
 
@@ -1059,7 +1090,7 @@ void Range_Read(ThreadState* thread) {
     }
 
     time(&now);
-    fprintf(stderr, "rwrandom completes %d write ops in %.3f seconds\n",done, difftime(now, begin));
+    printf("completes %d write ops in %.3f seconds\n",done, difftime(now, begin));
 
 }
 
@@ -1126,6 +1157,7 @@ void Range_Read(ThreadState* thread) {
   	if(runtime::needWarmUp()){
   	  leveldb::runtime::warm_up_status = 1;
   	  int k = (FLAGS_read_from/hot_ratio)*hot_ratio;
+  	  long long hashkey;
   	  int kk = k;
   	  uint64_t cachesize = FLAGS_mem_cache_size-cache_->Used();
   	  while(true){
@@ -1133,13 +1165,13 @@ void Range_Read(ThreadState* thread) {
   		if(((double)cache_->Used()/cachesize)>0.9||kk>=FLAGS_read_upto){
   		  break;
   		}
-
-  		snprintf(key, sizeof(key), "user%019lld", generator::YCSBKey_hash(k));
+	    hashkey=FLAGS_hash_key?generator::YCSBKey_hash(k):k;
+  		snprintf(key, sizeof(key), "user%019lld", hashkey);
   		kk += hot_ratio;
   		k = readgenerator->nextInt();
   		db_->Get(options,key,&value);
   		//fprintf(stdout,"%10d\%10d current used cache is %f\n",k,upto,100.0*((double)cache_->Used()/cachesize));
-  		fprintf(stdout,"%d/%d current used cache is %f%%\n",kk,FLAGS_read_upto, 100.0*((double)cache_->Used()/cachesize));
+  		fprintf(stderr,"%d/%ld current used cache is %f%%\n",kk,FLAGS_read_upto, 100.0*((double)cache_->Used()/cachesize));
 
       }
   	  leveldb::runtime::warm_up_status = 2;
@@ -1147,19 +1179,26 @@ void Range_Read(ThreadState* thread) {
   	  time(&begin);
 
       int k=0;
+      long long hashkey;
       gettimeofday(&start,NULL);
       bool isread = true;
+      time_t start_intv = 0, now_intv = 0;
+
       while(true)
       {
 
         time(&now);
+        if(start_intv==0){
+        	time(&start_intv);
+        }
   	    if (difftime(now, begin) > FLAGS_countdown || (readwrite_complete>=FLAGS_num&&FLAGS_num>=0)){
       		break;
   	    }
         isread = random()*100<=FLAGS_read_portion?true:false;
         if(isread){//read
          k = (readgenerator->nextInt()/hot_ratio)*hot_ratio;
-         snprintf(key, sizeof(key), "user%019lld", generator::YCSBKey_hash(k));
+		 hashkey=FLAGS_hash_key?generator::YCSBKey_hash(k):k;
+         snprintf(key, sizeof(key), "user%019lld", hashkey);
          s = db_->Get(options, key, &value);
          isFound = s.ok();
          readdone++;
@@ -1170,7 +1209,8 @@ void Range_Read(ThreadState* thread) {
         }
         else{//write
     	   k = writegenerator->nextInt();
-    	   snprintf(key, sizeof(key), "user%019lld", generator::YCSBKey_hash(k));
+		   hashkey=FLAGS_hash_key?generator::YCSBKey_hash(k):k;
+    	   snprintf(key, sizeof(key), "user%019lld", hashkey);
     	   batch.Put(key, gen.Generate(value_size_));
            writedone ++;
            s = db_->Write(write_options_, &batch);
@@ -1183,12 +1223,18 @@ void Range_Read(ThreadState* thread) {
        }
 
        readwrite_complete++;
-       if(readwrite_complete%50==0){
+ 	   time(&now_intv);
+ 	   if(difftime(now_intv,start_intv)>=rw_interval){
+ 	     printf("rwop: finishd %d ops in %d sec, cache size: %ld timepassed: %d\n",readwrite_complete-last_rw,rw_interval,cache_->Used(),(int)difftime(now_intv,begin));
+ 	     last_rw = readwrite_complete;
+ 	     time(&start_intv);
+ 	   }
+       if(readwrite_complete%latency_gap==0){
             gettimeofday(&end,NULL);
             latency = (end.tv_sec-start.tv_sec)*1000000+(end.tv_usec-start.tv_usec);
-            if(FLAGS_throughput>0&&50*readwrite_latency>latency)
+            if(FLAGS_throughput>0&&latency_gap*readwrite_latency>latency)
          	{
-         	  Env::Default()->SleepForMicroseconds(readwrite_latency*50-latency);
+         	  Env::Default()->SleepForMicroseconds(readwrite_latency*latency_gap-latency);
          	}
          	gettimeofday(&start,NULL);
        }
@@ -1200,9 +1246,9 @@ void Range_Read(ThreadState* thread) {
       thread->stats.AddMessage(msg);
 
       time(&now);
-      fprintf(stderr, "completes %d read ops (out of %d) in %.3f seconds, %d found\n",
+      printf("completes %d read ops (out of %d) in %.3f seconds, %d found\n",
         readdone, rwrandom_read_completed, difftime(now, begin), found);
-      fprintf(stderr, "completes %d write ops in %.3f seconds\n",writedone, difftime(now, begin));
+      printf("completes %d write ops in %.3f seconds\n",writedone, difftime(now, begin));
 
   }
 /*
@@ -1329,9 +1375,22 @@ int main(int argc, char** argv) {
     	FLAGS_read_portion = n;
     } else if (sscanf(argv[i], "--hitratio_interval=%d%c", &n, &junk) == 1) {
     	leveldb::runtime::hitratio_interval = n;
+    }  else if (sscanf(argv[i], "--rw_interval=%d%c", &n, &junk) == 1) {
+    	rw_interval = n;
     }  else if (sscanf(argv[i], "--zipfian_constant=%lf%c", &d, &junk) == 1) {
         FLAGS_zipfian_constant = d;
-    }  else if (sscanf(argv[i], "--dbmode=%d%c", &n, &junk) == 1) {
+    }  else if (sscanf(argv[i], "--hash_key=%d%c", &n, &junk) == 1) {
+        FLAGS_hash_key = n;
+    }  else if (sscanf(argv[i], "--max_print_level=%d%c", &n, &junk) == 1) {
+        leveldb::runtime::max_print_level = n;
+    }  else if (sscanf(argv[i], "--dlsm_end_level=%d%c", &n, &junk) == 1) {
+        leveldb::config::dlsm_end_level = n;
+    }   else if (sscanf(argv[i], "--level0_max_score=%lf%c", &d, &junk) == 1) {
+    	if(d>1){
+    		leveldb::runtime::level0_max_score = d;
+        }
+
+    }   else if (sscanf(argv[i], "--dbmode=%d%c", &n, &junk) == 1) {
         leveldb::config::dbmode = n;
         if(n!=0&&n!=1&&n!=2){
         	fprintf(stderr,"error dbmode, can only be 0(LSM) or 1(dLSM) 2(SM)\n");

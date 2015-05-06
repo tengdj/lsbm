@@ -1249,7 +1249,10 @@ Status DBImpl::Get(const ReadOptions& options,
     	  ReadOptions tmpoptions;
     	  tmpoptions.fill_cache = false;
     	  tmpoptions.verify_checksums = options.verify_checksums;
-    	  s = current->Get(tmpoptions,lkey,value,&stats,0,2);
+    	  s = current->Get(tmpoptions,lkey,value,&stats,0,1);
+    	  if(s.IsNotFound()){
+    		  s = current->Get(options,lkey,value,&stats,2,2);
+    	  }
     	  if(s.IsNotFound()){
              s = current_lazy->Get(options, lkey, value, &stats ,lazy_versions_->PhysicalStartLevel(3), lazy_versions_->PhysicalEndLevel(config::dlsm_end_level));
     	  }

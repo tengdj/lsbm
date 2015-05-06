@@ -473,7 +473,6 @@ int Version::GetRange(const ReadOptions& options,
   Slice start = lkstart.user_key();
   Slice end = lkend.user_key();
   const Comparator* ucmp = vset_->icmp_.user_comparator();
-  long long llmax_ = 9223372036854775807ll;
   stats->seek_file = NULL;
   stats->seek_file_level = -1;
   FileMetaData* last_file_read = NULL;
@@ -481,7 +480,8 @@ int Version::GetRange(const ReadOptions& options,
 
   std::vector<FileMetaData*> tmp;
   FileMetaData* tmp2;
-  for (int level = 0; level < level_num_; level++) {
+  //ignore level 0
+  for (int level = 1; level < level_num_; level++) {
 
     size_t num_files = files_[level].size();
     if (num_files == 0) continue;
@@ -490,13 +490,11 @@ int Version::GetRange(const ReadOptions& options,
     FileMetaData* const* files = &files_[level][0];
     for (uint32_t i = 0; i < num_files; i++) {
          FileMetaData* f = files[i];
-        // printf("%s %s\n",f->largest.user_key().ToString().c_str(),f->smallest.user_key().ToString().c_str());
          if (!(ucmp->Compare(start, f->largest.user_key()) > 0 ||ucmp->Compare(end, f->smallest.user_key()) < 0)){
                 tmp.push_back(f);
                 tmpcount++;
          }
     }
-   //fprintf(stderr,"number of files overlapped with level %d is %d/%ld\n",level,tmpcount,num_files);
   }
   int count = 0;
   int totalfound = 0;
@@ -511,7 +509,7 @@ int Version::GetRange(const ReadOptions& options,
 	  }
   }
   range_mu_.Lock();
-  fprintf(stderr,"%d files overlap with this key range, and %d records are found! %d\n",count,totalfound,range_query_num++);
+  printf("%d files overlap with this key range, and %d records are found! %d\n",count,totalfound,range_query_num++);
   range_mu_.Unlock();
   return totalfound;
 }
@@ -1184,6 +1182,7 @@ void VersionSet::Finalize(Version* v) {
   	      }else{
   	  	      score = v->files_[level].size()/static_cast<double>(config::kL0_CompactionTrigger);
   	      }
+  	      score = score<=runtime::level0_max_score?score:runtime::level0_max_score;
   	    } else {
   	      // Compute the ratio of current size to size limit.
   	      if(config::isLSM()&&!leveldb::runtime::two_phase_compaction){
@@ -1210,9 +1209,10 @@ void BasicVersionSet::printCurVersion(){
 		  return;
 	  }
 	  printf("------------------------------------------------------------------------\n");
-	  int max = config::kNumLevels-1;
-	  for(;max>=0;){
-	  	    	if(current_->files_[--max].size()!=0)
+	  //int max = config::kNumLevels-1;
+	  int max = PhysicalEndLevel(runtime::max_print_level);
+	  for(;max>=0;max--){
+	  	    	if(current_->files_[max].size()!=0)
 	  	    		break;
 	  }
 

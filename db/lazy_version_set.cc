@@ -716,9 +716,9 @@ void LazyVersionSet::printCurVersion(){
 		  return;
 	  }
 	  printf("------------------------------------------------------------------------\n");
-	  int max = config::kNumLevels-1;
-	  for(;max>=0;){
-	  	    	if(current_->files_[--max].size()!=0)
+	  int max = PhysicalEndLevel(runtime::max_print_level);
+	  for(;max>=0;max--){
+	  	    	if(current_->files_[max].size()!=0)
 	  	    		break;
 	  }
 

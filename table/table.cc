@@ -4,6 +4,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/time.h>
 #include "leveldb/table.h"
 
 #include "leveldb/cache.h"
@@ -169,11 +170,18 @@ static int prevhddserve = 0;
 
 static port::Mutex stats_mu_;
 static int nextprint = 0;
+static time_t start = 0;
+static time_t begin = -1;
+static bool begin_seted = false;
 // Convert an index iterator value (i.e., an encoded BlockHandle)
 // into an iterator over the contents of the corresponding block.
 Iterator* Table::BlockReader(void* arg,
                              const ReadOptions& options,
                              const Slice& index_value) {
+  if(!begin_seted){
+	  begin_seted = true;
+	  time(&begin);
+  }
   int tmptotalrequest = 0;
   int tmpmemserve = 0;
   int tmpssdserve = 0;
@@ -308,14 +316,15 @@ Iterator* Table::BlockReader(void* arg,
   } else {
     iter = NewErrorIterator(s);
   }
+  time_t now;
   if(!runtime::isWarmingUp()&&options.fill_cache){
 	stats_mu_.Lock();
 	totalrequest += tmptotalrequest;
 	memserve += tmpmemserve;
 	ssdserve += tmpssdserve;
 	hddserve += tmphddserve;
-	if(totalrequest>=nextprint){
-		nextprint += runtime::hitratio_interval;
+	time(&now);
+	if(difftime(now,start)>=runtime::hitratio_interval){
 		int gaptotalrequest = totalrequest - prevtotalrequest;
 		int gapmemserve = memserve - prevmemserve;
 		int gapssdserve = ssdserve - prevssdserve;
@@ -326,9 +335,10 @@ Iterator* Table::BlockReader(void* arg,
 		prevssdserve = ssdserve;
 		prevhddserve = hddserve;
       if(gaptotalrequest!=0)
-      printf("total: %8d memserve: %2.2f (%8d,%8d) hddserve:%2.2f (%8d,%8d)\n",
+      printf("hitratio: total: %8d memserve: %2.2f (%8d,%8d) hddserve:%2.2f (%8d,%8d) timepassed: %d\n",
     		 totalrequest,(double)gapmemserve/gaptotalrequest,gapmemserve,memserve,
-    		 (double)gaphddserve/gaptotalrequest,gaphddserve,hddserve);
+    		 (double)gaphddserve/gaptotalrequest,gaphddserve,hddserve,(int)difftime(now,begin));
+      time(&start);
 	}
 	stats_mu_.Unlock();
   }
@@ -411,7 +421,7 @@ Status Table::EvictBlockCache(){
     if(memcache!=NULL){
     	after = memcache->Used();
     }
-    //if(before!=after)
+    if(false&&before>after)
       printf("evicted file: %d, before %ld and after: %ld  \n",rep_->filenumber,before/rep_->options.block_size,after/rep_->options.block_size);
 	return s;
 }

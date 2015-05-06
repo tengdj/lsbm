@@ -72,6 +72,9 @@ inline bool needWarmUp(){
 extern bool print_version_info;
 extern int hitratio_interval;
 
+extern int max_print_level;
+extern int level0_max_score;
+
 } // runtime
 
 } // hlsm
