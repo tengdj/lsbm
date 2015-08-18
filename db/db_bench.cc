@@ -150,6 +150,7 @@ static int FLAGS_random_seed = 301;
 
 static volatile int rwrandom_read_completed = 0;
 static volatile int rwrandom_write_completed = 0;
+static int last_read = 0;
 
 static int monitor_interval = -1; //microseconds
 static bool first_monitor_interval = true;
@@ -172,11 +173,13 @@ static double FLAGS_zipfian_constant = 0.99;
 static bool FLAGS_hash_key = true;
 
 static int rw_interval = 1;
-static int last_read = 0;
-static int last_write = 0;
 static int last_rw = 0;
 
 static int latency_gap = 50;
+
+static long lateststart = 0;
+static long latestend = 0;
+static int write_threads = 0;
 /************* Extened Flags (END) *****************/
 
 namespace leveldb {
@@ -685,6 +688,7 @@ class Benchmark {
     	threads=0;
     	read_latency = read_latency*(random_read_thread);
     }
+	write_threads = write_thread;
     range_read_thread = (FLAGS_range_reads==0)?0:FLAGS_range_threads;
     if(random_read_thread==0&&threads==0){
        	runtime::need_warm_up = false;
@@ -893,11 +897,13 @@ void Random_Read(ThreadState* thread) {
 
        random_read_mu_.Lock();
        rwrandom_read_completed++;
-       time(&now_intv);
-       if(difftime(now_intv,start_intv)>=rw_interval){
-    	   printf("readop: finishd %d ops in %d sec, cache used: %ld timepassed: %d\n",rwrandom_read_completed-last_read,rw_interval,cache_->Used(),(int)difftime(now_intv,begin));
-    	   last_read = rwrandom_read_completed;
-    	   time(&start_intv);
+       if(thread->tid == write_threads){
+    	   time(&now_intv);
+    	   if(difftime(now_intv,start_intv)>=rw_interval){
+    	     printf("readop: finishd %d ops in %d sec, cache used: %ld timepassed: %d\n",rwrandom_read_completed-last_read,rw_interval,cache_->Used(),(int)difftime(now_intv,begin));
+    	     last_read = rwrandom_read_completed;
+    	     time(&start_intv);
+    	   }
        }
        random_read_mu_.Unlock();
        if(done%latency_gap==0){
@@ -1030,6 +1036,7 @@ void Range_Read(ThreadState* thread) {
 	long long hashkey;
 	time_t start_intv = 0, now_intv = 0;
 	gettimeofday(&start,NULL);
+	int last_write = 0;
     while(true){
       char key[100];
       time(&now);
