@@ -1278,7 +1278,7 @@ void Range_Read(ThreadState* thread) {
 int main(int argc, char** argv) {
   //FLAGS_write_buffer_size = leveldb::Options().write_buffer_size;
   //FLAGS_open_files = leveldb::Options().max_open_files;
-
+  leveldb::runtime::compaction_min_score = 0;
   for (int i = 1; i < argc; i++) {
     double d;
     int n;

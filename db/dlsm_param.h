@@ -52,6 +52,8 @@ inline bool isdLSM(){
 
 namespace runtime {
 
+extern double compaction_min_score;
+
 extern bool two_phase_compaction;
 //0 not started, 1 warmup started, 2 warmup done
 extern int warm_up_status;

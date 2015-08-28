@@ -35,6 +35,7 @@ int dlsm_end_level = 6;
 
 namespace runtime{
 
+double compaction_min_score = 1;
 bool two_phase_compaction = true;
 int warm_up_status = 0;
 bool need_warm_up = false;
