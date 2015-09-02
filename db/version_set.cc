@@ -1208,7 +1208,7 @@ void BasicVersionSet::printCurVersion(){
 	  if(!leveldb::runtime::print_version_info){
 		  return;
 	  }
-	  printf("------------------------------------------------------------------------\n");
+	  fprintf(stderr,"------------------------------------------------------------------------\n");
 	  //int max = config::kNumLevels-1;
 	  int max = PhysicalEndLevel(runtime::max_print_level);
 	  for(;max>=0;max--){
@@ -1217,17 +1217,17 @@ void BasicVersionSet::printCurVersion(){
 	  }
 
 	  for(int i=0;i<=max;i++){
-	      printf("\n");
+		  fprintf(stderr,"\n");
 	      if(current_->files_[i].size()==0)continue;
 	      	int llevel = config::logicallevel(i);
 	      	/*if(runtime::two_phase_compaction&&llevel!=0){
 	      		llevel = (llevel-1)/2+1;
 	      	}*/
-	      	printf("plevel:%d   llevel:%d |",i,llevel);
+	      	fprintf(stderr,"plevel:%d   llevel:%d |",i,llevel);
 	          for(int j=0;j<current_->files_[i].size();j++){
-	          	printf("%ld ",current_->files_[i][j]->number);
+	        	  fprintf(stderr,"%ld ",current_->files_[i][j]->number);
 	          }
-	          printf("\n");
+	          fprintf(stderr,"\n");
 	  }
 }
 
@@ -1448,7 +1448,7 @@ Compaction* BasicVersionSet::PickCompaction() {
   //TODO pick compaction error
   // We prefer compactions triggered by too much data in a level over
   // the compactions triggered by seeks.
-  const bool size_compaction = (current_->compaction_score_ >= 1);
+  const bool size_compaction = (current_->compaction_score_ > leveldb::runtime::compaction_min_score);
   const bool seek_compaction = false&&(current_->file_to_compact_ != NULL);
   if (size_compaction) {
     level = current_->compaction_level_;

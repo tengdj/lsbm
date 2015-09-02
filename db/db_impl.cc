@@ -951,6 +951,7 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
   //teng: dlsm
   if(config::isdLSM()&&level>1){
 	  int lazy_targetlevel = lazy_versions_->CompactionTargetLevel(level+1);
+	  printf("%d %d\n",level,lazy_targetlevel);
 	  Compaction *compaction = compact->compaction;
 	  VersionEdit lazy_edit;
 	  FileMetaData* file;

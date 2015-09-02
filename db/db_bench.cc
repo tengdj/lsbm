@@ -1278,7 +1278,6 @@ void Range_Read(ThreadState* thread) {
 int main(int argc, char** argv) {
   //FLAGS_write_buffer_size = leveldb::Options().write_buffer_size;
   //FLAGS_open_files = leveldb::Options().max_open_files;
-  leveldb::runtime::compaction_min_score = 0;
   for (int i = 1; i < argc; i++) {
     double d;
     int n;
@@ -1397,7 +1396,12 @@ int main(int argc, char** argv) {
     		leveldb::runtime::level0_max_score = d;
         }
 
-    }   else if (sscanf(argv[i], "--dbmode=%d%c", &n, &junk) == 1) {
+    }   else if (sscanf(argv[i], "--compaction_min_score=%lf%c", &d, &junk) == 1) {
+    	if(d<1){
+    		leveldb::runtime::compaction_min_score = d;
+        }
+
+    } else if (sscanf(argv[i], "--dbmode=%d%c", &n, &junk) == 1) {
         leveldb::config::dbmode = n;
         if(n!=0&&n!=1&&n!=2){
         	fprintf(stderr,"error dbmode, can only be 0(LSM) or 1(dLSM) 2(SM)\n");

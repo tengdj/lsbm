@@ -219,6 +219,7 @@ LazyVersionSet::LazyVersionSet(const std::string& dbname,
   for(int i=3;i<config::LogicalLevelnum;i++){
       targetPLevel[i] = i*config::levels_per_logical_level+1;
   }
+
 }
 
 LazyVersionSet::~LazyVersionSet() {
@@ -498,7 +499,7 @@ Compaction* LazyVersionSet::PickCompaction() {
 //TODO pick compaction error
   // We prefer compactions triggered by too much data in a level over
   // the compactions triggered by seeks.
-  const bool size_compaction = (current_->compaction_score_ >= 1);
+  const bool size_compaction = (current_->compaction_score_ > leveldb::runtime::compaction_min_score);
   if (size_compaction) {
     level = current_->compaction_level_;
 
@@ -715,11 +716,13 @@ void LazyVersionSet::printCurVersion(){
 	  if(!leveldb::runtime::print_version_info){
 		  return;
 	  }
-	  printf("------------------------------------------------------------------------\n");
+	  fprintf(stderr,"------------------------------------------------------------------------\n");
 	  int max = PhysicalEndLevel(runtime::max_print_level);
 	  for(;max>=0;max--){
 	  	    	if(current_->files_[max].size()!=0)
+	  	    	{
 	  	    		break;
+	  	    	}
 	  }
 
 	  for(int i=0;i<=max;i++){
@@ -729,11 +732,11 @@ void LazyVersionSet::printCurVersion(){
 	      	/*if(runtime::two_phase_compaction&&llevel!=0){
 	      		llevel = (llevel-1)/2+1;
 	      	}*/
-	      	printf("plevel:%d   llevel:%d |",i,llevel);
+	      	fprintf(stderr,"plevel:%d   llevel:%d |",i,llevel);
 	          for(int j=0;j<current_->files_[i].size();j++){
-	          	printf("%ld ",current_->files_[i][j]->number);
+	        	  fprintf(stderr,"%ld ",current_->files_[i][j]->number);
 	          }
-	          printf("\n");
+	          fprintf(stderr,"\n");
 	  }
 }
 
