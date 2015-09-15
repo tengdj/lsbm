@@ -726,7 +726,7 @@ void LazyVersionSet::printCurVersion(){
 	  }
 
 	  for(int i=0;i<=max;i++){
-	      if(i%config::levels_per_logical_level==1)printf("\n");
+	      if(i%config::levels_per_logical_level==1)fprintf(stderr,"\n");
 	      if(current_->files_[i].size()==0)continue;
 	      	int llevel = this->LogicalLevel(i);
 	      	/*if(runtime::two_phase_compaction&&llevel!=0){

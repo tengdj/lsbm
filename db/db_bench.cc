@@ -941,15 +941,24 @@ int sequentialread(const ReadOptions options, double range)
 
       double from_portion = random();
       from_portion = from_portion+range>1?1-range:from_portion;
-      long long base = 1000000;
-      long long fromll = (long long)(base*from_portion);
-      long long rangell = (long long)(base*range);
 
-      long long read_key_from = fromll*(llmax_/base);
-      long long read_key_to = llabs(read_key_from + rangell*(llmax_/base));
+      long long base = 1000000;
+      long long fromll,rangell,read_key_from,read_key_to;
+      if(FLAGS_hash_key){
+    	  fromll = (long long)(base*from_portion);
+    	  rangell = (long long)(base*range);
+
+    	  read_key_from = fromll*(llmax_/base);
+    	  read_key_to = llabs(read_key_from + rangell*(llmax_/base));
+      }else{
+    	  read_key_from = (FLAGS_read_upto-FLAGS_read_from)*from_portion+FLAGS_read_from;
+    	  read_key_to = (FLAGS_read_upto-FLAGS_read_from)*(from_portion+range)+FLAGS_read_from;
+      }
+
       char startch[100],endch[100];
       snprintf(startch, sizeof(startch), "user%019lld", read_key_from);
       snprintf(endch, sizeof(endch), "user%019lld", read_key_to);
+
       std::string startstr(startch);
       std::string endstr(endch);
       Slice start(startstr);

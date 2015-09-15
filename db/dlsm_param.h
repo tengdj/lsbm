@@ -1,6 +1,6 @@
 #ifndef DLSM_PARAM_H
 #define DLSM_PARAM_H
-
+#include <unistd.h>
 /************************** Constants *****************************/
 #define BLKSIZE 4096
 #define HLSM_LOGICAL_LEVEL_NUM leveldb::config::kNumLevels/2
@@ -45,6 +45,17 @@ inline bool isLSM(){
 }
 inline bool isdLSM(){
 	return dbmode==1;
+}
+
+/*
+ * Bloom Filter
+ */
+inline size_t get_bloom_filter_probe_num (int bits_per_key) {
+	int raw_probe_num = (bloom_bits_use < bits_per_key &&
+			bloom_bits_use > 0)?
+			bloom_bits_use : bits_per_key;
+	// We intentionally round down to reduce probing cost a little bit
+	return static_cast<size_t>(raw_probe_num * 0.69);  // 0.69 =~ ln(2)
 }
 
 
