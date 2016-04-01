@@ -17,7 +17,6 @@
 #include "table/format.h"
 #include "table/two_level_iterator.h"
 #include "util/coding.h"
-#include "util/ssd_cache.h"
 #include "db/dlsm_param.h"
 
 namespace leveldb {
@@ -160,12 +159,10 @@ static void ReleaseBlock(void* arg, void* h) {
 
 static int totalrequest = 0;
 static int memserve = 0;
-static int ssdserve = 0;
 static int hddserve = 0;
 
 static int prevtotalrequest = 0;
 static int prevmemserve = 0;
-static int prevssdserve = 0;
 static int prevhddserve = 0;
 
 static port::Mutex stats_mu_;
@@ -173,6 +170,8 @@ static int nextprint = 0;
 static time_t start = 0;
 static time_t begin = -1;
 static bool begin_seted = false;
+const static bool cache_on = false;
+
 // Convert an index iterator value (i.e., an encoded BlockHandle)
 // into an iterator over the contents of the corresponding block.
 Iterator* Table::BlockReader(void* arg,
@@ -184,17 +183,12 @@ Iterator* Table::BlockReader(void* arg,
   }
   int tmptotalrequest = 0;
   int tmpmemserve = 0;
-  int tmpssdserve = 0;
   int tmphddserve = 0;
 
-  bool ssd_cache_on = false;
-  bool cache_on = true;
   Table* table = reinterpret_cast<Table*>(arg);
   Cache* block_cache = table->rep_->options.block_cache;
   Block* block = NULL;
   Cache::Handle* cache_handle = NULL;
-  SSDCache* ssd_block_cache = table->rep_->options.ssd_block_cache;
-  Cache::Handle* ssd_cache_handle = NULL;
 
   BlockHandle handle;
   Slice input = index_value;
@@ -225,37 +219,14 @@ Iterator* Table::BlockReader(void* arg,
         }
       }
     }
-    //check ssd_block_cache (in ssd cache)
-    if (ssd_cache_on && options.fill_cache && block == NULL && ssd_block_cache != NULL) {
-      ssd_cache_handle = ssd_block_cache->Lookup(key);
-      if (ssd_cache_handle != NULL) {
-    	int *cache_slot = ssd_block_cache->Value(ssd_cache_handle);
-        s = ssd_block_cache->ReadBlock(*cache_slot, handle.size(),  &contents);
-        if (s.ok())
-        {
-        	block = new Block(contents);
-        	if(!runtime::isWarmingUp()&&options.fill_cache)
-        	{
-        		tmpssdserve++;
-        	}
-        }
-      }
-    }
+
 
     if(block != NULL&&block->size()==0){
 
        delete block;
        block = NULL;
-       if(ssd_cache_handle!=NULL){//error block got from ssd cache
-          ssd_block_cache->GetCache()->Release(ssd_cache_handle);
-          ssd_block_cache->GetCache()->Erase(key);
-          ssd_cache_handle = NULL;
-          if(!runtime::isWarmingUp()&&options.fill_cache)
-          {
-        	  tmpssdserve--;
-          }
-       }
-       if(cache_handle!=NULL){//error block got from ssd
+
+       if(cache_handle!=NULL){//error block got from memory
           block_cache->Release(cache_handle);
           block_cache->Erase(key);
           cache_handle = NULL;
@@ -286,16 +257,6 @@ Iterator* Table::BlockReader(void* arg,
           cache_handle = block_cache->Insert(key, block, block->size(), &DeleteCachedBlock);
    	    }
       }
-      if (ssd_cache_on && ssd_block_cache != NULL &&cache_handle==NULL) {
-      //insert into ssd_block_cache if missed in block_cache and ssd_block_cache
-        if (ssd_cache_handle == NULL) {
-          ssd_cache_handle = ssd_block_cache->Insert(key, &contents);
-          if(ssd_cache_handle==NULL){
-        	  printf("why the hell are your NULL?\n");
-        	  exit(-1);
-          }
-        }
-      }
     }
   }
 
@@ -309,30 +270,24 @@ Iterator* Table::BlockReader(void* arg,
     } else {
       iter->RegisterCleanup(&ReleaseBlock, block_cache, cache_handle);
     }
-    if (ssd_cache_handle != NULL){
-      iter->RegisterCleanup(&ReleaseBlock, ssd_block_cache->GetCache(), ssd_cache_handle);
-    }
 
   } else {
     iter = NewErrorIterator(s);
   }
   time_t now;
-  if(!runtime::isWarmingUp()&&options.fill_cache){
+  if(!runtime::isWarmingUp()&&options.fill_cache&&cache_on){
 	stats_mu_.Lock();
 	totalrequest += tmptotalrequest;
 	memserve += tmpmemserve;
-	ssdserve += tmpssdserve;
 	hddserve += tmphddserve;
 	time(&now);
 	if(difftime(now,start)>=runtime::hitratio_interval){
 		int gaptotalrequest = totalrequest - prevtotalrequest;
 		int gapmemserve = memserve - prevmemserve;
-		int gapssdserve = ssdserve - prevssdserve;
 		int gaphddserve = hddserve - prevhddserve;
 
 		prevtotalrequest = totalrequest;
 		prevmemserve = memserve;
-		prevssdserve = ssdserve;
 		prevhddserve = hddserve;
       if(gaptotalrequest!=0)
       printf("hitratio: total: %8d memserve: %2.2f (%8d,%8d) hddserve:%2.2f (%8d,%8d) timepassed: %d\n",
@@ -382,17 +337,15 @@ Status Table::InternalGet(const ReadOptions& options, const Slice& k,
   delete iiter;
   return s;
 }
-//evict all blocks from the ssd cache of this table related file
+//evict all blocks from the mem cache of this table related file
 Status Table::EvictBlockCache(){
 	Status s;
 
 	int i=0;
 
 	Iterator* iiter = rep_->index_block->NewIterator(rep_->options.comparator);
-	SSDCache *ssdcache = rep_->options.ssd_block_cache;
 	Cache *memcache = rep_->options.block_cache;
 	uint64_t before, after;
-	//printf("evict file %d, before: %d  ",rep_->filenumber,ssdcache->FreeListSize());
 	if(memcache!=NULL){
 		before = memcache->Used();
 	}
@@ -407,8 +360,6 @@ Status Table::EvictBlockCache(){
 	        EncodeFixed64(cache_key_buffer, rep_->filenumber);
 	        EncodeFixed64(cache_key_buffer+8, handle.offset());
 	        Slice key(cache_key_buffer, sizeof(cache_key_buffer));
-	        if(ssdcache!=NULL)
-	        ssdcache->Erase(key);
 	        if(memcache!=NULL)
 	        memcache->Erase(key);
 	    }

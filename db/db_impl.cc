@@ -34,6 +34,7 @@
 #include "util/logging.h"
 #include "util/mutexlock.h"
 #include "util/ssd_cache.h"
+#include "leveldb/cache.h"
 
 namespace leveldb {
 
@@ -131,7 +132,6 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
                                &internal_filter_policy_, raw_options)),
       owns_info_log_(options_.info_log != raw_options.info_log),
       owns_cache_(options_.block_cache != raw_options.block_cache),
-      owns_ssd_cache_(options_.ssd_block_cache != raw_options.ssd_block_cache),
       dbname_(dbname),
       db_lock_(NULL),
       shutting_down_(NULL),
@@ -197,9 +197,8 @@ DBImpl::~DBImpl() {
   if (owns_cache_) {
     delete options_.block_cache;
   }
-  if (owns_ssd_cache_) {
-	delete options_.ssd_block_cache;
-  }
+
+
 }
 
 Status DBImpl::NewDB() {
@@ -1205,9 +1204,46 @@ int64_t DBImpl::TEST_MaxNextLevelOverlappingBytes() {
   return versions_->MaxNextLevelOverlappingBytes();
 }
 
+
+
+static void deleteString(const Slice &key, void *value){
+	delete (std::string*)value;
+}
+
+void DBImpl::UpdateKeyCache(const Slice& key, const Slice& value){
+	if(!options_.key_cache_)return;
+
+	Cache::Handle *handle = options_.key_cache_->Lookup(key);
+	if(handle!=NULL){
+		options_.key_cache_->Release(handle);
+		options_.key_cache_->Erase(key);
+		//char *valuestr = new char(value.size());
+		//memcpy(valuestr, value.data(), value.size());
+		//options_.key_cache_->Insert(key,(void *)(new std::string(valuestr,value.size())),1,&deleteString);
+	}
+
+}
+
+int cached = 0;
+int notcached = 0;
 Status DBImpl::Get(const ReadOptions& options,
                    const Slice& key,
                    std::string* value) {
+
+	if((cached+notcached)%10000==0){
+		printf("%d %d   |\n",cached, notcached);
+	}
+  Cache::Handle *keyhandle = NULL;
+  if(options_.key_cache_){
+	  keyhandle = options_.key_cache_->Lookup(key);
+	  if(keyhandle!=NULL){
+		  value = (std::string*)options_.key_cache_->Value(keyhandle);
+		  options_.key_cache_->Release(keyhandle);
+		  cached++;
+		  return Status::OK();
+	  }
+  }
+  notcached++;
   Status s;
   MutexLock l(&mutex_);
   SequenceNumber snapshot;
@@ -1281,6 +1317,14 @@ Status DBImpl::Get(const ReadOptions& options,
   if(config::isdLSM()){
 	  current_lazy->Unref();
   }
+
+  if(options_.key_cache_&&value&&keyhandle==NULL){
+
+	  char *valuestr = new char[value->size()];
+	  memcpy(valuestr,value->data(),value->size());
+	  keyhandle = options_.key_cache_->Insert(key,(void *)new std::string(valuestr,value->size()),1,&deleteString);
+  }
+
   return s;
 }
 

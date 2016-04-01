@@ -30,6 +30,8 @@ extern int bloom_bits_use;
 
 extern int dlsm_end_level;
 
+extern int key_cache_size;
+
 //make enough room for two phase compaction
 const static int LogicalLevelnum = 2*2+1+1;
 const static int levels_per_logical_level = 25;

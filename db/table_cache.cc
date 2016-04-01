@@ -125,7 +125,7 @@ void TableCache::Evict(uint64_t file_number, uint64_t file_size) {
   Cache::Handle* handle = NULL;
   Status s = FindTable(file_number, file_size, &handle);
 
-  if(s.ok() && (options_->ssd_block_cache!=NULL||options_->block_cache!=NULL)){
+  if(s.ok() && options_->block_cache!=NULL){
     Table* t = reinterpret_cast<TableAndFile*>(cache_->Value(handle))->table;
     s = t->EvictBlockCache();
   }

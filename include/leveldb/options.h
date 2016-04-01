@@ -10,7 +10,6 @@
 namespace leveldb {
 
 class Cache;
-class SSDCache;
 class Comparator;
 class Env;
 class FilterPolicy;
@@ -98,8 +97,9 @@ struct Options {
   // If NULL, leveldb will automatically create and use an 8MB internal cache.
   // Default: NULL
   Cache* block_cache;
-  //teng: used for secondary ssd cache
-  SSDCache* ssd_block_cache;
+
+  //key-value cache
+  Cache* key_cache_;
   // Approximate size of user data packed per block.  Note that the
   // block size specified here corresponds to uncompressed data.  The
   // actual size of the unit read from disk may be smaller if

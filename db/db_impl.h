@@ -35,6 +35,7 @@ class DBImpl : public DB {
   virtual Status Get(const ReadOptions& options,
                      const Slice& key,
                      std::string* value);
+  virtual void UpdateKeyCache(const Slice& key, const Slice &value);
   virtual int GetRange(const ReadOptions& options,
                          const Slice& startkey, const Slice &endkey);
 
@@ -128,7 +129,7 @@ class DBImpl : public DB {
   const Options options_;  // options_.comparator == &internal_comparator_
   bool owns_info_log_;
   bool owns_cache_;
-  bool owns_ssd_cache_;
+
   const std::string dbname_;
 
   // table_cache_ provides its own synchronization
@@ -175,6 +176,7 @@ class DBImpl : public DB {
   VersionSet* versions_;
   //teng: for dual lsm tree, the lazy delete set
   VersionSet* lazy_versions_;
+
   // Have we encountered a background error in paranoid mode?
   Status bg_error_;
 

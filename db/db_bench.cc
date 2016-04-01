@@ -23,7 +23,6 @@
 #include "util/mutexlock.h"
 #include "util/random.h"
 #include "util/testutil.h"
-#include "util/ssd_cache.h"
 #include "generator.h"
 #include "dlsm_param.h"
 
@@ -84,10 +83,8 @@ static int FLAGS_write_buffer_size = 8*1024*1024;
 // Negative means use default settings.
 static int FLAGS_mem_cache_size = -1;
 
-//teng: parameters for ssd cache
-static const char * FLAGS_ssd_cache_path = NULL;
-//teng: ssd cache size in bytes
-size_t FLAGS_ssd_cache_size = -1;
+static int FLAGS_key_cache_size = 0;
+
 
 // Maximum number of files to keep open at the same time (use default if == 64000)
 static int FLAGS_open_files = 64000;
@@ -136,6 +133,8 @@ static int64_t readwrite_latency = 0;
 static int FLAGS_range_threads = 0;
 static long FLAGS_range_reads = -1;//max number of range query
 
+
+static int FLAGS_batch_size = 10;
 
 //end of teng's parameters
 
@@ -451,7 +450,7 @@ struct ThreadState {
 class Benchmark {
  private:
   Cache* cache_;
-  SSDCache* ssd_cache_;
+  Cache* key_cache_;
   const FilterPolicy* filter_policy_;
   DB* db_;
   int value_size_;
@@ -539,24 +538,18 @@ class Benchmark {
 
  public:
   Benchmark()
-  : cache_(FLAGS_mem_cache_size >= 0 ? NewLRUCache(FLAGS_mem_cache_size) : NULL),
+  : cache_(FLAGS_mem_cache_size > 0 ? NewLRUCache(FLAGS_mem_cache_size) : NULL),
+	key_cache_(FLAGS_key_cache_size > 0 ? NewLRUCache(FLAGS_key_cache_size) : NULL),
     filter_policy_(FLAGS_bloom_bits >= 0
                    ? NewBloomFilterPolicy(FLAGS_bloom_bits)
                    : NULL),
     db_(NULL),
     value_size_(FLAGS_value_size),
-    entries_per_batch_(1),
+    entries_per_batch_(FLAGS_batch_size),
     random_reads_(FLAGS_random_reads),
     range_reads_(FLAGS_range_reads),
     writes_(FLAGS_writes),
     heap_counter_(0) {
-
-	if(FLAGS_ssd_cache_size > 0 && FLAGS_ssd_cache_path!=NULL && random_reads_!=0){
-	   std::string cache_path = std::string(FLAGS_ssd_cache_path);
-	   ssd_cache_ = new SSDCache(cache_path,BLOCKSIZE,(FLAGS_ssd_cache_size*1024)/(BLOCKSIZE/1024));
-	}else{
-		ssd_cache_ = NULL;
-	}
 
     std::vector<std::string> files;
     Env::Default()->GetChildren(FLAGS_db, &files);
@@ -573,8 +566,13 @@ class Benchmark {
   ~Benchmark() {
 
     delete db_;
-    delete cache_;
+    if(cache_){
+    	delete cache_;
+    }
     delete filter_policy_;
+    if(key_cache_){
+    	delete key_cache_;
+    }
   }
 
   void Run() {
@@ -599,7 +597,7 @@ class Benchmark {
       writes_ = FLAGS_writes;
       range_reads_ = FLAGS_range_reads;
       value_size_ = FLAGS_value_size;
-      entries_per_batch_ = 1;
+      entries_per_batch_ = FLAGS_batch_size;
       write_options_ = WriteOptions();
 
       void (Benchmark::*method)(ThreadState*) = NULL;
@@ -772,7 +770,7 @@ class Benchmark {
     Options options;
     options.create_if_missing = true;//!FLAGS_use_existing_db;
     options.block_cache = cache_;
-    options.ssd_block_cache = ssd_cache_;
+    options.key_cache_ = key_cache_;
     options.write_buffer_size = FLAGS_write_buffer_size;
     options.max_open_files = FLAGS_open_files;
     options.filter_policy = filter_policy_;
@@ -825,7 +823,7 @@ void Random_Read(ThreadState* thread) {
 	   mygenerator = new generator::CounterGenerator(FLAGS_read_from,FLAGS_read_upto);
 	}
 
-	if(cache_==NULL){
+	if(cache_==NULL&&key_cache_==NULL){
 		leveldb::runtime::need_warm_up = false;
 	}
 	bool startwarmup = false;
@@ -840,18 +838,34 @@ void Random_Read(ThreadState* thread) {
 		//align k
 		int k = (FLAGS_read_from/hot_ratio)*hot_ratio;
 		long long hashkey;
-		uint64_t cachesize = FLAGS_mem_cache_size-cache_->Used();
+		uint64_t memcachesize,keycachesize;
+		if(cache_)memcachesize = FLAGS_mem_cache_size - cache_->Used();
+		if(key_cache_)keycachesize = FLAGS_key_cache_size - key_cache_->Used();
 		//int cachesize = cache_->;
 		const int upto = FLAGS_read_upto;
 		while(true){
 		    if(k>=FLAGS_read_upto||random_reads_==0){
 		      break;
 		    }
+
 		    k += hot_ratio;
 		    hashkey=FLAGS_hash_key?generator::YCSBKey_hash(k):k;
 		    snprintf(key, sizeof(key), "user%019lld",hashkey);
 		    db_->Get(options,key,&value);
-		    fprintf(stderr,"%10d\%10d current used cache is %f\n",k,upto,100.0*((double)cache_->Used()/cachesize));
+		    if(cache_){
+		    	double memused = 100.0*((double)cache_->Used()/memcachesize);
+		    	fprintf(stderr,"%10d\%10d current used mem cache is %f\n",k,upto,memused);
+		    	if(memused>=99){
+		    		break;
+		    	}
+		    }
+		    if(key_cache_){
+		    	double keyused = 100.0*((double)key_cache_->Used()/keycachesize);
+		    	fprintf(stderr,"%10d\%10d current used key cache is %f\n",k,upto,keyused);
+		    	if(keyused>=99){
+		    		break;
+		    	}
+		    }
 
 	   }
 	   runtime::warm_up_status = 2;
@@ -864,8 +878,7 @@ void Random_Read(ThreadState* thread) {
 
 
 	time(&begin);
-    int notfoundforcache = 0;
-    int foundnotcached = 0;
+
     int k=0;
     long long hashkey;
     time_t start_intv = 0, now_intv = 0;
@@ -900,7 +913,7 @@ void Random_Read(ThreadState* thread) {
        if(thread->tid == write_threads){
     	   time(&now_intv);
     	   if(difftime(now_intv,start_intv)>=rw_interval){
-    	     printf("readop: finishd %d ops in %d sec, cache used: %ld timepassed: %d\n",rwrandom_read_completed-last_read,rw_interval,cache_->Used(),(int)difftime(now_intv,begin));
+    	     printf("readop: finishd %d ops in %d sec, timepassed: %d\n",rwrandom_read_completed-last_read,rw_interval,(int)difftime(now_intv,begin));
     	     last_read = rwrandom_read_completed;
     	     time(&start_intv);
     	   }
@@ -1052,11 +1065,22 @@ void Range_Read(ThreadState* thread) {
       if(start_intv==0){
     	  time(&start_intv);
       }
-	  if (difftime(now, begin) >= FLAGS_countdown)
+	  if (difftime(now, begin) >= FLAGS_countdown-1)
           break;
       if(done>=writes_&&writes_>=0)
       {
-    	  if (difftime(now, begin) > FLAGS_countdown){
+    	  if (bnum != 0) {
+    		  bnum = 0;
+    	      s = db_->Write(write_options_, &batch);
+    	      batch.Clear();
+    	      if (!s.ok()) {
+    	           fprintf(stderr, "put error: %s\n", s.ToString().c_str());
+    	           exit(1);
+    	      }
+    	      thread->stats.AddBytes(bytes);
+    	      bytes = 0;
+    	  }
+    	  if (difftime(now, begin) > FLAGS_countdown-1){
 	            break;
     	  }
     	  else{
@@ -1069,8 +1093,13 @@ void Range_Read(ThreadState* thread) {
       k = mygenerator->nextInt();
 	  hashkey=FLAGS_hash_key?generator::YCSBKey_hash(k):k;
       snprintf(key, sizeof(key), "user%019lld", hashkey);
-      batch.Put(key, gen.Generate(value_size_));
+      Slice keyslice(key);
+      Slice valueslice = gen.Generate(value_size_);
       bytes += value_size_ + strlen(key);
+      batch.Put(keyslice, valueslice);
+
+      //db_->UpdateKeyCache(keyslice,valueslice);
+
       bnum ++;
       done ++;
 
@@ -1084,9 +1113,9 @@ void Range_Read(ThreadState* thread) {
           }
           thread->stats.AddBytes(bytes);
           bytes = 0;
-        }
-    	thread->stats.FinishedWriteOp();
-	    rwrandom_write_completed++;
+       }
+      thread->stats.FinishedWriteOp();
+	  rwrandom_write_completed++;
 	  time(&now_intv);
 	  if(difftime(now_intv,start_intv)>=rw_interval){
 	     printf("writeop: finishd %d ops in %d sec, timepassed: %d\n",rwrandom_write_completed-last_write,rw_interval,(int)difftime(now_intv,begin));
@@ -1166,7 +1195,7 @@ void Range_Read(ThreadState* thread) {
   		  Env::Default()->SleepForMicroseconds(FLAGS_countdown*1000000);
   		  return;
   	}
-  	if(cache_==NULL){
+  	if(cache_==NULL&&key_cache_==NULL){
   		leveldb::runtime::need_warm_up = false;
   	}
   	bool startwarmup = false;
@@ -1315,8 +1344,9 @@ int main(int argc, char** argv) {
       FLAGS_write_buffer_size = n;
     } else if (sscanf(argv[i], "--mem_cache_size=%d%c", &n, &junk) == 1) {
       FLAGS_mem_cache_size = n*1024*1024;
-    } else if (sscanf(argv[i], "--ssd_cache_size=%d%c", &n, &junk) == 1) {
-      FLAGS_ssd_cache_size = n;
+    } else if (sscanf(argv[i], "--key_cache_size=%d%c", &n, &junk) == 1) {
+      FLAGS_key_cache_size = n;
+      leveldb::config::key_cache_size = n;
     } else if (sscanf(argv[i], "--bloom_bits=%d%c", &n, &junk) == 1) {
       FLAGS_bloom_bits = n;
     } else if (sscanf(argv[i], "--bloom_bits_use=%d%c", &n, &junk) == 1) {
@@ -1326,8 +1356,6 @@ int main(int argc, char** argv) {
     } else if (strncmp(argv[i], "--db=", 5) == 0) {
       FLAGS_db = argv[i] + 5;
       leveldb::config::db_path = FLAGS_db;
-    } else if (strncmp(argv[i], "--ssd_cache_path=", 17) == 0) {
-      FLAGS_ssd_cache_path = argv[i] + 17;
     } else if (sscanf(argv[i], "--read_key_from=%ld%c", &n64, &junk) == 1) {
       FLAGS_read_from = n64;
     } else if (sscanf(argv[i], "--read_key_upto=%ld%c", &n64, &junk) == 1) {

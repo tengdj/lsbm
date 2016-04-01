@@ -31,6 +31,8 @@ int bloom_bits_use = -1;
 //teng: end level for dlsm mode
 int dlsm_end_level = 6;
 
+//teng: key-value cache
+int key_cache_size = 0;
 }
 
 namespace runtime{

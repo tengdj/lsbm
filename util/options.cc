@@ -19,7 +19,6 @@ Options::Options()
       write_buffer_size(4<<20),
       max_open_files(1000),
       block_cache(NULL),
-      ssd_block_cache(NULL),
       block_size(4096),
       block_restart_interval(16),
       compression(kSnappyCompression),
