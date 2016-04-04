@@ -145,6 +145,7 @@ class LRUCache {
                         void* value, size_t charge,
                         void (*deleter)(const Slice& key, void* value));
   Cache::Handle* Lookup(const Slice& key, uint32_t hash);
+  Cache::Handle* LiteLookup(const Slice& key, uint32_t hash);
   void Release(Cache::Handle* handle);
   void Erase(const Slice& key, uint32_t hash);
   uint64_t getUsage(){
@@ -190,6 +191,7 @@ void LRUCache::Unref(LRUHandle* e) {
   e->refs--;
   if (e->refs <= 0) {
     usage_ -= e->charge;
+
     (*e->deleter)(e->key(), e->value);
     free(e);
   }
@@ -215,6 +217,15 @@ Cache::Handle* LRUCache::Lookup(const Slice& key, uint32_t hash) {
     e->refs++;
     LRU_Remove(e);
     LRU_Append(e);
+  }
+  return reinterpret_cast<Cache::Handle*>(e);
+}
+
+Cache::Handle* LRUCache::LiteLookup(const Slice& key, uint32_t hash) {
+  MutexLock l(&mutex_);
+  LRUHandle* e = table_.Lookup(key, hash);
+  if (e != NULL) {
+    e->refs++;
   }
   return reinterpret_cast<Cache::Handle*>(e);
 }
@@ -248,6 +259,7 @@ Cache::Handle* LRUCache::Insert(
   }
 
   while (usage_ > capacity_ && lru_.next != &lru_) {
+
     LRUHandle* old = lru_.next;
     LRU_Remove(old);
     table_.Remove(old->key(), old->hash);
@@ -300,6 +312,10 @@ class ShardedLRUCache : public Cache {
   virtual Handle* Lookup(const Slice& key) {
     const uint32_t hash = HashSlice(key);
     return shard_[Shard(hash)].Lookup(key, hash);
+  }
+  virtual Handle* LiteLookup(const Slice& key) {
+      const uint32_t hash = HashSlice(key);
+      return shard_[Shard(hash)].LiteLookup(key, hash);
   }
   virtual void Release(Handle* handle) {
     LRUHandle* h = reinterpret_cast<LRUHandle*>(handle);

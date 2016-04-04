@@ -79,11 +79,13 @@ static bool FLAGS_histogram = true;
 //teng: set to 8MB by default
 static int FLAGS_write_buffer_size = 8*1024*1024;
 
-// Number of bytes to use as a cache of uncompressed data.
+// Number of Megabytes to use as a cache of uncompressed data.
 // Negative means use default settings.
-static int FLAGS_mem_cache_size = -1;
+static int FLAGS_block_cache_size = -1;
 
 static int FLAGS_key_cache_size = 0;
+
+
 
 
 // Maximum number of files to keep open at the same time (use default if == 64000)
@@ -113,6 +115,13 @@ static int64_t FLAGS_write_span = -1;
 static int64_t FLAGS_read_from = 0;
 static int64_t FLAGS_read_upto = -1;
 static int64_t FLAGS_read_span = -1;
+
+
+static int FLAGS_key_from = 0;
+static int FLAGS_key_upto = 0;
+
+/*the noise percentage for rangehot workload*/
+static int FLAGS_noise_percent = 5;
 
 /*uniform zipfian latest*/
 static char *FLAGS_write_ycsb_workload = NULL;
@@ -538,7 +547,7 @@ class Benchmark {
 
  public:
   Benchmark()
-  : cache_(FLAGS_mem_cache_size > 0 ? NewLRUCache(FLAGS_mem_cache_size) : NULL),
+  : cache_(FLAGS_block_cache_size > 0 ? NewLRUCache(FLAGS_block_cache_size) : NULL),
 	key_cache_(FLAGS_key_cache_size > 0 ? NewLRUCache(FLAGS_key_cache_size) : NULL),
     filter_policy_(FLAGS_bloom_bits >= 0
                    ? NewBloomFilterPolicy(FLAGS_bloom_bits)
@@ -805,7 +814,9 @@ void Random_Read(ThreadState* thread) {
     int done = 0;
     char key[100];
 
+
 	generator::IntegerGenerator *mygenerator;
+	generator::IntegerGenerator *noisegenerator = new generator::UniformIntegerGenerator(FLAGS_key_from,FLAGS_key_upto);
 	if(FLAGS_read_ycsb_workload==NULL){
 		mygenerator = new generator::CounterGenerator(FLAGS_read_from,FLAGS_read_upto);
 	}
@@ -839,7 +850,7 @@ void Random_Read(ThreadState* thread) {
 		int k = (FLAGS_read_from/hot_ratio)*hot_ratio;
 		long long hashkey;
 		uint64_t memcachesize,keycachesize;
-		if(cache_)memcachesize = FLAGS_mem_cache_size - cache_->Used();
+		if(cache_)memcachesize = FLAGS_block_cache_size - cache_->Used();
 		if(key_cache_)keycachesize = FLAGS_key_cache_size - key_cache_->Used();
 		//int cachesize = cache_->;
 		const int upto = FLAGS_read_upto;
@@ -852,19 +863,18 @@ void Random_Read(ThreadState* thread) {
 		    hashkey=FLAGS_hash_key?generator::YCSBKey_hash(k):k;
 		    snprintf(key, sizeof(key), "user%019lld",hashkey);
 		    db_->Get(options,key,&value);
+		    double memused = 0,keyused = 0;
 		    if(cache_){
-		    	double memused = 100.0*((double)cache_->Used()/memcachesize);
+		    	memused = 100.0*((double)cache_->Used()/memcachesize);
 		    	fprintf(stderr,"%10d\%10d current used mem cache is %f\n",k,upto,memused);
-		    	if(memused>=99){
-		    		break;
-		    	}
 		    }
 		    if(key_cache_){
-		    	double keyused = 100.0*((double)key_cache_->Used()/keycachesize);
+		    	keyused = 100.0*((double)key_cache_->Used()/keycachesize);
 		    	fprintf(stderr,"%10d\%10d current used key cache is %f\n",k,upto,keyused);
-		    	if(keyused>=99){
-		    		break;
-		    	}
+		    }
+
+		    if((!cache_||memused>=99)&&(!key_cache_||keyused>=99)){
+		    	break;
 		    }
 
 	   }
@@ -897,7 +907,11 @@ void Random_Read(ThreadState* thread) {
     	   Env::Default()->SleepForMicroseconds(FLAGS_countdown*1000000);
     	   break;
        }
-       k = (mygenerator->nextInt()/hot_ratio)*hot_ratio;
+       if(random()*100>FLAGS_noise_percent){
+           k = (mygenerator->nextInt()/hot_ratio)*hot_ratio;
+       }else{
+           k = (noisegenerator->nextInt()/hot_ratio)*hot_ratio;
+       }
 	   hashkey=FLAGS_hash_key?generator::YCSBKey_hash(k):k;
        snprintf(key, sizeof(key), "user%019lld",hashkey);
        s = db_->Get(options, key, &value);
@@ -1096,9 +1110,9 @@ void Range_Read(ThreadState* thread) {
       Slice keyslice(key);
       Slice valueslice = gen.Generate(value_size_);
       bytes += value_size_ + strlen(key);
-      batch.Put(keyslice, valueslice);
 
-      //db_->UpdateKeyCache(keyslice,valueslice);
+      batch.Put(keyslice, valueslice);
+      db_->UpdateKeyCache(keyslice,valueslice);
 
       bnum ++;
       done ++;
@@ -1204,7 +1218,7 @@ void Range_Read(ThreadState* thread) {
   	  int k = (FLAGS_read_from/hot_ratio)*hot_ratio;
   	  long long hashkey;
   	  int kk = k;
-  	  uint64_t cachesize = FLAGS_mem_cache_size-cache_->Used();
+  	  uint64_t cachesize = FLAGS_block_cache_size-cache_->Used();
   	  while(true){
   		//||FLAGS_num==0||;
   		if(((double)cache_->Used()/cachesize)>0.9||kk>=FLAGS_read_upto){
@@ -1342,11 +1356,12 @@ int main(int argc, char** argv) {
       FLAGS_value_size = n;
     } else if (sscanf(argv[i], "--write_buffer_size=%d%c", &n, &junk) == 1) {
       FLAGS_write_buffer_size = n;
-    } else if (sscanf(argv[i], "--mem_cache_size=%d%c", &n, &junk) == 1) {
-      FLAGS_mem_cache_size = n*1024*1024;
+    } else if (sscanf(argv[i], "--block_cache_size=%d%c", &n, &junk) == 1) {
+      FLAGS_block_cache_size = n*1024*1024;
+      printf("%d\n",FLAGS_block_cache_size);
     } else if (sscanf(argv[i], "--key_cache_size=%d%c", &n, &junk) == 1) {
-      FLAGS_key_cache_size = n;
-      leveldb::config::key_cache_size = n;
+      FLAGS_key_cache_size = n*1024*1024;
+      leveldb::config::key_cache_size = FLAGS_key_cache_size;
     } else if (sscanf(argv[i], "--bloom_bits=%d%c", &n, &junk) == 1) {
       FLAGS_bloom_bits = n;
     } else if (sscanf(argv[i], "--bloom_bits_use=%d%c", &n, &junk) == 1) {
@@ -1356,7 +1371,11 @@ int main(int argc, char** argv) {
     } else if (strncmp(argv[i], "--db=", 5) == 0) {
       FLAGS_db = argv[i] + 5;
       leveldb::config::db_path = FLAGS_db;
-    } else if (sscanf(argv[i], "--read_key_from=%ld%c", &n64, &junk) == 1) {
+    } else if (sscanf(argv[i], "--key_from=%ld%c", &n64, &junk) == 1) {
+      FLAGS_key_from = n64;
+    } else if (sscanf(argv[i], "--key_upto=%ld%c", &n64, &junk) == 1) {
+      FLAGS_key_upto = n64;
+    }else if (sscanf(argv[i], "--read_key_from=%ld%c", &n64, &junk) == 1) {
       FLAGS_read_from = n64;
     } else if (sscanf(argv[i], "--read_key_upto=%ld%c", &n64, &junk) == 1) {
       FLAGS_read_upto = n64;
@@ -1407,7 +1426,8 @@ int main(int argc, char** argv) {
     	if(n!=0){
     		hot_ratio = 100/n;
     	}
-
+    } else if (sscanf(argv[i], "--noise_percent=%d%c", &n, &junk) == 1) {
+    	FLAGS_noise_percent = n;
     } else if (sscanf(argv[i], "--num=%d%c", &n, &junk) == 1) {
         FLAGS_num = n;
     } else if (sscanf(argv[i], "--throughput=%d%c", &n, &junk) == 1) {

@@ -423,6 +423,9 @@ static int readFileinRange(int fnumber, Slice start,Slice end) {
 	sprintf(name,"%s/%06d.ldb",leveldb::config::db_path,fnumber);
 	std::string fname(name);
 
+	/*
+	 * keys found in this file
+	 * */
 	int count = 0;
 	leveldb::Env* env = leveldb::Env::Default();
 	uint64_t file_size;

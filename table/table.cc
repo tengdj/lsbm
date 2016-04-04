@@ -18,6 +18,7 @@
 #include "table/two_level_iterator.h"
 #include "util/coding.h"
 #include "db/dlsm_param.h"
+#include "util/cache_stat.h"
 
 namespace leveldb {
 
@@ -157,33 +158,16 @@ static void ReleaseBlock(void* arg, void* h) {
   cache->Release(handle);
 }
 
-static int totalrequest = 0;
-static int memserve = 0;
-static int hddserve = 0;
-
-static int prevtotalrequest = 0;
-static int prevmemserve = 0;
-static int prevhddserve = 0;
-
-static port::Mutex stats_mu_;
-static int nextprint = 0;
-static time_t start = 0;
-static time_t begin = -1;
-static bool begin_seted = false;
-const static bool cache_on = false;
 
 // Convert an index iterator value (i.e., an encoded BlockHandle)
 // into an iterator over the contents of the corresponding block.
 Iterator* Table::BlockReader(void* arg,
                              const ReadOptions& options,
                              const Slice& index_value) {
-  if(!begin_seted){
-	  begin_seted = true;
-	  time(&begin);
-  }
-  int tmptotalrequest = 0;
-  int tmpmemserve = 0;
-  int tmphddserve = 0;
+
+
+  int block_cache_served = 0;
+  int hdd_served = 0;
 
   Table* table = reinterpret_cast<Table*>(arg);
   Cache* block_cache = table->rep_->options.block_cache;
@@ -197,10 +181,7 @@ Iterator* Table::BlockReader(void* arg,
   // can add more features in the future.
 
   if (s.ok()) {
-	if(!runtime::isWarmingUp()&&options.fill_cache)
-	{
-		tmptotalrequest++ ;
-	}
+
     BlockContents contents;
     //build key for cache lookup
     char cache_key_buffer[16];
@@ -209,13 +190,13 @@ Iterator* Table::BlockReader(void* arg,
     EncodeFixed64(cache_key_buffer+8, handle.offset());
     Slice key(cache_key_buffer, sizeof(cache_key_buffer));
     //check block_cache (in memory)
-    if (cache_on && block_cache != NULL) {
+    if (block_cache != NULL) {
       cache_handle = block_cache->Lookup(key);
       if (cache_handle != NULL) {
         block = reinterpret_cast<Block*>(block_cache->Value(cache_handle));
         if(!runtime::isWarmingUp()&&options.fill_cache)
         {
-        	tmpmemserve++;
+        	block_cache_served++;
         }
       }
     }
@@ -232,7 +213,7 @@ Iterator* Table::BlockReader(void* arg,
           cache_handle = NULL;
           if(!runtime::isWarmingUp()&&options.fill_cache)
           {
-        	  tmpmemserve--;
+        	  block_cache_served--;
           }
       }
     }
@@ -243,7 +224,7 @@ Iterator* Table::BlockReader(void* arg,
         block = new Block(contents);
         if(!runtime::isWarmingUp()&&options.fill_cache)
         {
-        	tmphddserve++;
+        	hdd_served++;
         }
       }
     }
@@ -251,7 +232,7 @@ Iterator* Table::BlockReader(void* arg,
     //insert block into cache if necessary
     if (block != NULL && options.fill_cache) {//contents.cachable &&
 
-      if (cache_on && block_cache != NULL) {
+      if (block_cache != NULL) {
       //always insert into block_cache if missed
         if (cache_handle == NULL) {
           cache_handle = block_cache->Insert(key, block, block->size(), &DeleteCachedBlock);
@@ -274,29 +255,10 @@ Iterator* Table::BlockReader(void* arg,
   } else {
     iter = NewErrorIterator(s);
   }
-  time_t now;
-  if(!runtime::isWarmingUp()&&options.fill_cache&&cache_on){
-	stats_mu_.Lock();
-	totalrequest += tmptotalrequest;
-	memserve += tmpmemserve;
-	hddserve += tmphddserve;
-	time(&now);
-	if(difftime(now,start)>=runtime::hitratio_interval){
-		int gaptotalrequest = totalrequest - prevtotalrequest;
-		int gapmemserve = memserve - prevmemserve;
-		int gaphddserve = hddserve - prevhddserve;
 
-		prevtotalrequest = totalrequest;
-		prevmemserve = memserve;
-		prevhddserve = hddserve;
-      if(gaptotalrequest!=0)
-      printf("hitratio: total: %8d memserve: %2.2f (%8d,%8d) hddserve:%2.2f (%8d,%8d) timepassed: %d\n",
-    		 totalrequest,(double)gapmemserve/gaptotalrequest,gapmemserve,memserve,
-    		 (double)gaphddserve/gaptotalrequest,gaphddserve,hddserve,(int)difftime(now,begin));
-      time(&start);
-	}
-	stats_mu_.Unlock();
-  }
+
+  leveldb::updateCache_stat(0,block_cache_served,hdd_served);
+
   return iter;
 }
 

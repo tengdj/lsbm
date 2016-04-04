@@ -36,6 +36,8 @@
 #include "util/ssd_cache.h"
 #include "leveldb/cache.h"
 
+#include "util/cache_stat.h"
+
 namespace leveldb {
 
 const int kNumNonTableCacheFiles = 10;
@@ -118,9 +120,11 @@ Options SanitizeOptions(const std::string& dbname,
       result.info_log = NULL;
     }
   }
+  //teng: can be NULL in our design
+  /*
   if (result.block_cache == NULL) {
     result.block_cache = NewLRUCache(8 << 20);
-  }
+  }*/
   return result;
 }
 
@@ -1207,6 +1211,7 @@ int64_t DBImpl::TEST_MaxNextLevelOverlappingBytes() {
 
 
 static void deleteString(const Slice &key, void *value){
+	//printf("delete %s\n",key.ToString().c_str());
 	delete (std::string*)value;
 }
 
@@ -1219,7 +1224,11 @@ void DBImpl::UpdateKeyCache(const Slice& key, const Slice& value){
 		options_.key_cache_->Erase(key);
 		//char *valuestr = new char(value.size());
 		//memcpy(valuestr, value.data(), value.size());
-		//options_.key_cache_->Insert(key,(void *)(new std::string(valuestr,value.size())),1,&deleteString);
+		std::string *str = new std::string(value.data(),value.size());
+		handle = options_.key_cache_->Insert(key,(void *)(str),key.size()+value.size(),&deleteString);
+		if(handle){
+			options_.key_cache_->Release(handle);
+		}
 	}
 
 }
@@ -1229,10 +1238,13 @@ int notcached = 0;
 Status DBImpl::Get(const ReadOptions& options,
                    const Slice& key,
                    std::string* value) {
-
+/*
 	if((cached+notcached)%10000==0){
 		printf("%d %d   |\n",cached, notcached);
+		cached = 0;
+		notcached = 0;
 	}
+	*/
   Cache::Handle *keyhandle = NULL;
   if(options_.key_cache_){
 	  keyhandle = options_.key_cache_->Lookup(key);
@@ -1240,6 +1252,7 @@ Status DBImpl::Get(const ReadOptions& options,
 		  value = (std::string*)options_.key_cache_->Value(keyhandle);
 		  options_.key_cache_->Release(keyhandle);
 		  cached++;
+		  leveldb::updateCache_stat(1,0,0);
 		  return Status::OK();
 	  }
   }
@@ -1320,9 +1333,12 @@ Status DBImpl::Get(const ReadOptions& options,
 
   if(options_.key_cache_&&value&&keyhandle==NULL){
 
-	  char *valuestr = new char[value->size()];
-	  memcpy(valuestr,value->data(),value->size());
-	  keyhandle = options_.key_cache_->Insert(key,(void *)new std::string(valuestr,value->size()),1,&deleteString);
+	  //char *valuestr = new char[value->size()];
+	  //memcpy(valuestr,value->data(),value->size());
+	  keyhandle = options_.key_cache_->Insert(key,(void *)new std::string(value->data(),value->size()),key.size()+value->size(),&deleteString);
+	  if(keyhandle){
+		  options_.key_cache_->Release(keyhandle);
+	  }
   }
 
   return s;
