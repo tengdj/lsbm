@@ -58,7 +58,7 @@ class Cache {
   // must call this->Release(handle) when the returned mapping is no
   // longer needed.
   virtual Handle* Lookup(const Slice& key) = 0;
-
+  virtual Handle* LiteLookup(const Slice& key) = 0;
   // Release a mapping returned by a previous Lookup().
   // REQUIRES: handle must not have been released yet.
   // REQUIRES: handle must have been returned by a method on *this.
@@ -83,6 +83,13 @@ class Cache {
 
   virtual uint64_t Used() = 0;
 
+  virtual double Percent() = 0;
+
+  size_t getCapacity(){
+	  return capacity_;
+  }
+ protected:
+  size_t capacity_;
  private:
   void LRU_Remove(Handle* e);
   void LRU_Append(Handle* e);

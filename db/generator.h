@@ -248,7 +248,7 @@ public:
 class ZipfianGenerator: public IntegerGenerator
 {
 public:
-	static const double ZIPFIAN_CONSTANT=0.99;
+	static constexpr double ZIPFIAN_CONSTANT=0.99;
 private:
 	/**
 	 * Number of items.
@@ -562,8 +562,8 @@ class ScrambledZipfianGenerator: public IntegerGenerator
 	ZipfianGenerator *gen;
 	long _min,_max,_itemcount;
 public:
-	static const double ZETAN=26.46902820178302;
-    static const double USED_ZIPFIAN_CONSTANT=0.99;
+	static constexpr double ZETAN=26.46902820178302;
+    static constexpr double USED_ZIPFIAN_CONSTANT=0.99;
 	static const long ITEM_COUNT=10000000000L;
 
 

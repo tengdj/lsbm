@@ -83,7 +83,9 @@ class PosixRandomAccessFile: public RandomAccessFile {
   virtual Status Read(uint64_t offset, size_t n, Slice* result,
                       char* scratch) const {
     Status s;
-    ssize_t r = pread(fd_, scratch, n, static_cast<off_t>(offset));
+
+    ssize_t r = pread(fd_, scratch, n,static_cast<off_t>(offset));
+
     *result = Slice(scratch, (r < 0) ? 0 : r);
     if (r < 0) {
       // An error: return a non-ok status
@@ -250,7 +252,9 @@ class PosixWritableFile : public WritableFile {
       return s;
     }
     if (fflush_unlocked(file_) != 0 ||
-        fdatasync(fileno(file_)) != 0) {
+        fdatasync(fileno(file_)) != 0)
+    //if (fflush(file_) != 0 || fsync(fileno(file_)) != 0)
+    {
       s = Status::IOError(filename_, strerror(errno));
     }
     return s;
@@ -317,7 +321,9 @@ class PosixEnv : public Env {
     *result = NULL;
     Status s;
     //teng: direct IO, no case is allowed
+
     int fd = open(fname.c_str(), O_RDONLY);
+
     if (fd < 0) {
       s = IOError(fname, errno);
       //teng: disable mmap file, all file access is from posix random access file
@@ -346,9 +352,12 @@ class PosixEnv : public Env {
   virtual Status NewWritableFile(const std::string& fname,
                                  WritableFile** result) {
     Status s;
-    FILE* f = fopen(fname.c_str(), "w");
+
+    FILE* f = fopen(fname.c_str(),"w");
+    //FILE* f = fopen(fname.c_str(), "w");
     if (f == NULL) {
       *result = NULL;
+
       s = IOError(fname, errno);
     } else {
       *result = new PosixWritableFile(fname, f);
@@ -482,6 +491,7 @@ class PosixEnv : public Env {
     FILE* f = fopen(fname.c_str(), "w");
     if (f == NULL) {
       *result = NULL;
+
       return IOError(fname, errno);
     } else {
       *result = new PosixLogger(f, &PosixEnv::gettid);

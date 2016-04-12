@@ -7,6 +7,8 @@
 
 #include <stdint.h>
 #include "leveldb/iterator.h"
+#include <vector>
+
 
 namespace leveldb {
 
@@ -57,6 +59,8 @@ class Table {
   uint64_t ApproximateOffsetOf(const Slice& key) const;
 
   Status EvictBlockCache();
+
+  Status GetKeyRangeCached(std::vector<Slice *> *result);
 
  private:
   struct Rep;

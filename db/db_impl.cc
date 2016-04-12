@@ -578,6 +578,7 @@ void DBImpl::CompactMemTable() {
   Version* base = versions_->current();
   base->Ref();
   Status s = WriteLevel0Table(imm_, &edit, base);
+
   base->Unref();
 
   if (s.ok() && shutting_down_.Acquire_Load()) {
@@ -756,7 +757,7 @@ void DBImpl::BackgroundCompaction() {
   Status status;
   if (c == NULL) {
     // Nothing to do
-  } else if (!is_manual &&config::isLSM()&& c->IsTrivialMove()) {
+  } else if (!is_manual &&!config::isSM()&& c->IsTrivialMove()) {
     // Move file to next level
     assert(c->num_input_files(0) == 1);
     FileMetaData* f = c->input(0, 0);
@@ -764,6 +765,31 @@ void DBImpl::BackgroundCompaction() {
     c->edit()->AddFile(c->level() + 1, f->number, f->file_size,
                        f->smallest, f->largest);
     status = versions_->LogAndApply(c->edit(), &mutex_);
+    versions_->printCurVersion();
+    if(config::isdLSM()&&c->level()>1&&c->level()<=config::dlsm_end_level){
+    	VersionEdit lazy_edit;
+    	if(c->level()+1 <= config::dlsm_end_level){
+    		int lazy_targetlevel = lazy_versions_->CompactionTargetLevel(c->level()+1);
+    		lazy_edit.AddFile(lazy_targetlevel,f->number,f->file_size,f->smallest,f->largest);
+    	}
+
+    	InternalKey smallest,largest;
+    	smallest = f->smallest;
+    	largest = f->largest;
+
+    	std::vector<FileMetaData *> needdelete;
+    	for(int i=lazy_versions_->PhysicalStartLevel(c->level());i<=lazy_versions_->PhysicalEndLevel(c->level());i++){
+
+    	     lazy_versions_->FilesCoveredInLevel(i,smallest,largest,&needdelete);
+    	     for(int j=0;j<needdelete.size();j++){
+    	        lazy_edit.DeleteFile(i,needdelete[j]->number);
+    	     }
+    	     needdelete.clear();
+    	}
+    	lazy_versions_->LogAndApply(&lazy_edit,&mutex_);
+    	lazy_versions_->printCurVersion();
+    }
+
     if (!status.ok()) {
       RecordBackgroundError(status);
     }
@@ -864,7 +890,9 @@ Status DBImpl::OpenCompactionOutputFile(CompactionState* compact) {
   std::string fname = TableFileName(dbname_, file_number);
   Status s = env_->NewWritableFile(fname, &compact->outfile);
   if (s.ok()) {
-    compact->builder = new TableBuilder(options_, compact->outfile);
+	//teng: later will be used for pre-caching hot blocks after compaction
+	compact->outfile->setFilenumber(file_number);
+    compact->builder = new TableBuilder(options_, compact->outfile, runtime::pre_caching);
   }
   return s;
 }
@@ -951,6 +979,8 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
     //printf("file %d is added to level %d\n",out.number,targetlevel);
   }
   Status s = versions_->LogAndApply(compact->compaction->edit(), &mutex_);
+  versions_->printCurVersion();
+
   //teng: dlsm
   if(config::isdLSM()&&level>1){
 	  int lazy_targetlevel = lazy_versions_->CompactionTargetLevel(level+1);
@@ -958,16 +988,23 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
 	  VersionEdit lazy_edit;
 	  FileMetaData* file;
 	  std::vector<FileMetaData *> inputs;
+	  //append file from C(i) to D[i+1]
       for(int i=0;i<compaction->num_input_files(0);i++){
     	   file = compaction->input(0,i);
     	   inputs.push_back(file);
+    	   //we set an end level for the compaction buffer to make it configurable. in our experiments, we set it to end at the last second level
     	   if(level+1 <= config::dlsm_end_level)
            lazy_edit.AddFile(lazy_targetlevel,file->number,file->file_size,file->smallest,file->largest);
       }
+      //the input file of C(i) is read in order, therefore the smallest key of the input files is the smallest key of the first file, so does the largest key
       InternalKey smallest,largest;
+      smallest = compaction->input(0,0)->smallest;
+      largest = compaction->input(0,compaction->num_input_files(0)-1)->largest;
 
-      lazy_versions_->GetRange(inputs,&smallest,&largest);
-      //printf("%s %s\n",smallest.DebugString().c_str(),largest.DebugString().c_str());
+      //lazy_versions_->GetRange(inputs,&smallest,&largest);
+      if(level==6)
+      printf("%s %s\n",smallest.DebugString().c_str(),largest.DebugString().c_str());
+      //some of the files in C(i) is compacted down, such that the the files in D(i) which is the counterpart should also be deleted to maintain consistancy
       std::vector<FileMetaData *> needdelete;
       for(int i=lazy_versions_->PhysicalStartLevel(level);i<=lazy_versions_->PhysicalEndLevel(level);i++){
 
@@ -978,7 +1015,6 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
           needdelete.clear();
       }
       lazy_versions_->LogAndApply(&lazy_edit,&mutex_);
-      versions_->printCurVersion();
       lazy_versions_->printCurVersion();
   }
   return s;
@@ -992,7 +1028,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
       compact->compaction->level(),
       compact->compaction->num_input_files(1),
       compact->compaction->level() + 1);
-*/
+ */
   assert(versions_->NumLevelFiles(compact->compaction->level()) > 0);
   assert(compact->builder == NULL);
   assert(compact->outfile == NULL);
@@ -1005,6 +1041,34 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   // Release mutex while we're actually doing the compaction work
   mutex_.Unlock();
 
+  //TODO:
+  /* teng: check the entire block cache to see if some of the blocks will be
+   * evicted from the block cache after this round of compaction,
+   * pre-caching the blocks covered by those key ranges
+   *
+   * */
+  size_t cached_block_number = 0;
+  std::vector<std::vector<Slice*>> cachedRanges;
+  int levelsize = config::isSM()?config::levels_per_logical_level+1:2;
+  if(runtime::pre_caching&&options_.block_cache)
+  {
+	  Compaction *compactinfo = compact->compaction;
+	  Cache *block_cache = options_.block_cache;
+	  for(int i=0;i<levelsize;i++){
+		 std::vector<Slice *> tempcr;
+		 for(int j=0;j<compactinfo->num_input_files(i);j++){
+			 FileMetaData *file = compactinfo->input(i,j);
+			 Table * table;
+			 this->table_cache_->GetTable(file->number,file->file_size,&table);
+			 if(table){
+			  table->GetKeyRangeCached(&tempcr);
+			 }
+		 }
+		 cachedRanges.push_back(tempcr);
+	  }
+  }
+
+  //
   Iterator* input = versions_->MakeInputIterator(compact->compaction);
   input->SeekToFirst();
   Status status;
@@ -1029,6 +1093,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
     Slice key = input->key();
     if (compact->compaction->ShouldStopBefore(key) &&
         compact->builder != NULL) {
+      cached_block_number += compact->builder->cached_block_number;
       status = FinishCompactionOutputFile(compact, input);
       if (!status.ok()) {
         break;
@@ -1087,6 +1152,13 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
         if (!status.ok()) {
           break;
         }
+        if(!config::isSM()){
+            compact->builder->cachedRanges = &cachedRanges;
+            compact->builder->rangeCursor[0] = 0;
+            compact->builder->rangeCursor[1] = 0;
+        }
+
+
       }
       if (compact->builder->NumEntries() == 0) {
         compact->current_output()->smallest.DecodeFrom(key);
@@ -1097,6 +1169,8 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
       // Close output file if it is big enough
       if (compact->builder->FileSize() >=
           compact->compaction->MaxOutputFileSize()) {
+
+        cached_block_number += compact->builder->cached_block_number;
         status = FinishCompactionOutputFile(compact, input);
         if (!status.ok()) {
           break;
@@ -1143,7 +1217,19 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   VersionSet::LevelSummaryStorage tmp;
   Log(options_.info_log,
       "compacted to: %s", versions_->LevelSummary(&tmp));
-
+  //TODO change for pre-caching, disabled for SM mode
+  if(!config::isSM()&&runtime::pre_caching&&options_.block_cache){
+	 printf("pre-caching: %ld %ld %f\n",cachedRanges[0].size()+cachedRanges[1].size(),cached_block_number,options_.block_cache->Percent());
+	 for(int i=0;i<cachedRanges.size();i++)
+		 for(int j=0;j<cachedRanges[i].size();j++){
+		 delete cachedRanges[i][j][0].data();
+		 delete cachedRanges[i][j][1].data();
+		 delete cachedRanges[i][j];
+	 }
+	 cachedRanges[0].clear();
+	 cachedRanges[1].clear();
+	 cachedRanges.clear();
+  }
   return status;
 }
 
@@ -1252,7 +1338,7 @@ Status DBImpl::Get(const ReadOptions& options,
 		  value = (std::string*)options_.key_cache_->Value(keyhandle);
 		  options_.key_cache_->Release(keyhandle);
 		  cached++;
-		  leveldb::updateCache_stat(1,0,0);
+		  leveldb::updateCache_stat(1,0,0,(double)options_.key_cache_->Used()/options_.key_cache_->getCapacity(),0);
 		  return Status::OK();
 	  }
   }
@@ -1295,24 +1381,19 @@ Status DBImpl::Get(const ReadOptions& options,
       // Done
     } else {
       if(config::isdLSM()){
-    	  ReadOptions tmpoptions;
-    	  tmpoptions.fill_cache = false;
-    	  tmpoptions.verify_checksums = options.verify_checksums;
-    	  /*
-    	  s = current->Get(tmpoptions,lkey,value,&stats,0,1);
-    	  //files in level 2 could be taken by dlsm part, so file cache
-    	  if(s.IsNotFound()){
-    		  s = current->Get(options,lkey,value,&stats,2,2);
-    	  }*/
-    	  //if(s.IsNotFound())
+
+    	  //the logical level 0 and 1 are not part of compaction buffer, check them first
+    	  s = current->Get(options,lkey,value,&stats,0,2);
+    	  //if not found in logical level 0 and level 1, go check the compaction buffer
+    	  if(s.IsNotFound())
     	  {
     		 //printf("%d,%d\n",lazy_versions_->PhysicalStartLevel(3),lazy_versions_->PhysicalEndLevel(config::dlsm_end_level));
              s = current_lazy->Get(options, lkey, value, &stats ,lazy_versions_->PhysicalStartLevel(3), lazy_versions_->PhysicalEndLevel(config::dlsm_end_level));
     	  }
-    	  /*
+    	  //if not found, return to LSM-tree to read the rest levels
     	  if(s.IsNotFound()){
     		 s = current->Get(options,lkey,value,&stats,config::dlsm_end_level+1);
-    	  }*/
+    	  }
       }else{
     	  s = current->Get(options, lkey, value, &stats);
       }
@@ -1333,8 +1414,6 @@ Status DBImpl::Get(const ReadOptions& options,
 
   if(options_.key_cache_&&value&&keyhandle==NULL){
 
-	  //char *valuestr = new char[value->size()];
-	  //memcpy(valuestr,value->data(),value->size());
 	  keyhandle = options_.key_cache_->Insert(key,(void *)new std::string(value->data(),value->size()),key.size()+value->size(),&deleteString);
 	  if(keyhandle){
 		  options_.key_cache_->Release(keyhandle);
@@ -1567,7 +1646,9 @@ Status DBImpl::MakeRoomForWrite(bool force) {
       uint64_t new_log_number = versions_->NewFileNumber();
       WritableFile* lfile = NULL;
       s = env_->NewWritableFile(LogFileName(dbname_, new_log_number), &lfile);
+
       if (!s.ok()) {
+
         // Avoid chewing through file number space in a tight loop.
         versions_->ReuseFileNumber(new_log_number);
         break;
@@ -1585,6 +1666,8 @@ Status DBImpl::MakeRoomForWrite(bool force) {
       MaybeScheduleCompaction();
     }
   }
+  //else
+
   return s;
 }
 

@@ -14,6 +14,8 @@
 #define STORAGE_LEVELDB_INCLUDE_TABLE_BUILDER_H_
 
 #include <stdint.h>
+#include <list>
+#include <vector>
 #include "leveldb/options.h"
 #include "leveldb/status.h"
 
@@ -28,7 +30,7 @@ class TableBuilder {
   // Create a builder that will store the contents of the table it is
   // building in *file.  Does not close the file.  It is up to the
   // caller to close the file after calling Finish().
-  TableBuilder(const Options& options, WritableFile* file);
+  TableBuilder(const Options& options, WritableFile* file, bool pre_caching = false);
 
   // REQUIRES: Either Finish() or Abandon() has been called.
   ~TableBuilder();
@@ -50,7 +52,7 @@ class TableBuilder {
   // Can be used to ensure that two adjacent entries never live in
   // the same data block.  Most clients should not need to use this method.
   // REQUIRES: Finish(), Abandon() have not been called
-  void Flush();
+  void Flush(bool cache);
 
   // Return non-ok iff some error has been detected.
   Status status() const;
@@ -73,15 +75,16 @@ class TableBuilder {
   // Size of the file generated so far.  If invoked after a successful
   // Finish() call, returns the size of the final generated file.
   uint64_t FileSize() const;
-
+  std::vector<std::vector<Slice *>> *cachedRanges;
+  int rangeCursor[2];
+  size_t cached_block_number;
  private:
   bool ok() const { return status().ok(); }
-  void WriteBlock(BlockBuilder* block, BlockHandle* handle);
+  void WriteBlock(BlockBuilder* block, BlockHandle* handle, bool cache);
   void WriteRawBlock(const Slice& data, CompressionType, BlockHandle* handle);
-
   struct Rep;
   Rep* rep_;
-
+  bool pre_caching;
   // No copying allowed
   TableBuilder(const TableBuilder&);
   void operator=(const TableBuilder&);

@@ -59,7 +59,10 @@ Status TableCache::FindTable(uint64_t file_number, uint64_t file_size,
       if (env_->NewRandomAccessFile(old_fname, &file).ok()) {
         s = Status::OK();
       }
+
+
     }
+
     if (s.ok()) {
       s = Table::Open(*options_,file_number, file, file_size, &table);
     }
@@ -117,6 +120,17 @@ Status TableCache::Get(const ReadOptions& options,
   }
   return s;
 }
+
+Status TableCache::GetTable(uint64_t file_number, uint64_t file_size, Table **table){
+	Cache::Handle *handle = NULL;
+	Status s = FindTable(file_number,file_size,&handle);
+	if (s.ok()) {
+	    *table = reinterpret_cast<TableAndFile*>(cache_->Value(handle))->table;
+	    cache_->Release(handle);
+	}
+	return s;
+}
+
 
 void TableCache::Evict(uint64_t file_number, uint64_t file_size) {
   char buf[sizeof(file_number)];

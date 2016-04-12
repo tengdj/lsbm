@@ -81,7 +81,7 @@ static int FLAGS_write_buffer_size = 8*1024*1024;
 
 // Number of Megabytes to use as a cache of uncompressed data.
 // Negative means use default settings.
-static int FLAGS_block_cache_size = -1;
+static uint64_t FLAGS_block_cache_size = -1;
 
 static int FLAGS_key_cache_size = 0;
 
@@ -185,8 +185,6 @@ static int last_rw = 0;
 
 static int latency_gap = 50;
 
-static long lateststart = 0;
-static long latestend = 0;
 static int write_threads = 0;
 /************* Extened Flags (END) *****************/
 
@@ -346,15 +344,15 @@ class Stats {
     }
 
     done_++;
-    if (done_ >= next_report_) {/*
+    if (done_ >= next_report_) {
       if      (next_report_ < 1000)   next_report_ += 100;
       else if (next_report_ < 5000)   next_report_ += 500;
       else if (next_report_ < 10000)  next_report_ += 1000;
       else if (next_report_ < 50000)  next_report_ += 5000;
       else if (next_report_ < 100000) next_report_ += 10000;
       else if (next_report_ < 500000) next_report_ += 50000;
-      else                            next_report_ += 100000;*/
-      next_report_ += 1000;
+      else                            next_report_ += 100000;
+      //next_report_ += 1000;
       fprintf(stderr, "... finished %d %s\r", done_, rw==1?"reads":"writes");
       fflush(stderr);
     }
@@ -833,10 +831,11 @@ void Random_Read(ThreadState* thread) {
 	else {
 	   mygenerator = new generator::CounterGenerator(FLAGS_read_from,FLAGS_read_upto);
 	}
-
+/*
 	if(cache_==NULL&&key_cache_==NULL){
 		leveldb::runtime::need_warm_up = false;
 	}
+*/
 	bool startwarmup = false;
 	if(runtime::needWarmUp()){
 	random_read_mu_.Lock();
@@ -849,9 +848,6 @@ void Random_Read(ThreadState* thread) {
 		//align k
 		int k = (FLAGS_read_from/hot_ratio)*hot_ratio;
 		long long hashkey;
-		uint64_t memcachesize,keycachesize;
-		if(cache_)memcachesize = FLAGS_block_cache_size - cache_->Used();
-		if(key_cache_)keycachesize = FLAGS_key_cache_size - key_cache_->Used();
 		//int cachesize = cache_->;
 		const int upto = FLAGS_read_upto;
 		while(true){
@@ -864,18 +860,20 @@ void Random_Read(ThreadState* thread) {
 		    snprintf(key, sizeof(key), "user%019lld",hashkey);
 		    db_->Get(options,key,&value);
 		    double memused = 0,keyused = 0;
+		    fprintf(stderr,"%10d\%10d ",k,upto);
 		    if(cache_){
-		    	memused = 100.0*((double)cache_->Used()/memcachesize);
-		    	fprintf(stderr,"%10d\%10d current used mem cache is %f\n",k,upto,memused);
+		    	memused = 100.0*(cache_->Percent());
+		    	fprintf(stderr,"block cache usage %f",memused);
 		    }
 		    if(key_cache_){
-		    	keyused = 100.0*((double)key_cache_->Used()/keycachesize);
-		    	fprintf(stderr,"%10d\%10d current used key cache is %f\n",k,upto,keyused);
+		    	keyused = 100.0*(key_cache_->Percent());
+		    	fprintf(stderr,"key cache usage %f",keyused);
 		    }
-
-		    if((!cache_||memused>=99)&&(!key_cache_||keyused>=99)){
-		    	break;
-		    }
+	    	fprintf(stderr,"\n");
+		    //if((cache_&&memused>=99)&&(key_cache_&&keyused>=99))
+		    //{
+		    	//break;
+		    //}
 
 	   }
 	   runtime::warm_up_status = 2;
@@ -927,7 +925,7 @@ void Random_Read(ThreadState* thread) {
        if(thread->tid == write_threads){
     	   time(&now_intv);
     	   if(difftime(now_intv,start_intv)>=rw_interval){
-    	     printf("readop: finishd %d ops in %d sec, timepassed: %d\n",rwrandom_read_completed-last_read,rw_interval,(int)difftime(now_intv,begin));
+    	     fprintf(stdout,"readop: finishd %d ops in %d sec, timepassed: %d\n",rwrandom_read_completed-last_read,rw_interval,(int)difftime(now_intv,begin));
     	     last_read = rwrandom_read_completed;
     	     time(&start_intv);
     	   }
@@ -951,7 +949,7 @@ void Random_Read(ThreadState* thread) {
     thread->stats.AddMessage(msg);
 
     time(&now);
-    printf("completes %d read ops (out of %d) in %.3f seconds, %d found\n",
+    fprintf(stdout,"completes %d read ops (out of %d) in %.3f seconds, %d found\n",
       done, rwrandom_read_completed, difftime(now, begin), found);
 
 }
@@ -1021,7 +1019,7 @@ void Range_Read(ThreadState* thread) {
       done++;
     }//end while
 
-    printf("\ntotally operated %d range queries (out of %lld), and %d results (out of %d) are found\n"
+    fprintf(stdout,"\ntotally operated %d range queries (out of %lld), and %d results (out of %d) are found\n"
     		,done,range_query_completed_,count,range_total_);
 }
 /*modification required for key*/
@@ -1132,7 +1130,7 @@ void Range_Read(ThreadState* thread) {
 	  rwrandom_write_completed++;
 	  time(&now_intv);
 	  if(difftime(now_intv,start_intv)>=rw_interval){
-	     printf("writeop: finishd %d ops in %d sec, timepassed: %d\n",rwrandom_write_completed-last_write,rw_interval,(int)difftime(now_intv,begin));
+	     fprintf(stdout,"writeop: finishd %d ops in %d sec, timepassed: %d\n",rwrandom_write_completed-last_write,rw_interval,(int)difftime(now_intv,begin));
 	     last_write = rwrandom_write_completed;
 	     time(&start_intv);
 	  }
@@ -1149,7 +1147,7 @@ void Range_Read(ThreadState* thread) {
     }
 
     time(&now);
-    printf("completes %d write ops in %.3f seconds\n",done, difftime(now, begin));
+    fprintf(stdout,"completes %d write ops in %.3f seconds\n",done, difftime(now, begin));
 
 }
 
@@ -1357,8 +1355,8 @@ int main(int argc, char** argv) {
     } else if (sscanf(argv[i], "--write_buffer_size=%d%c", &n, &junk) == 1) {
       FLAGS_write_buffer_size = n;
     } else if (sscanf(argv[i], "--block_cache_size=%d%c", &n, &junk) == 1) {
-      FLAGS_block_cache_size = n*1024*1024;
-      printf("%d\n",FLAGS_block_cache_size);
+      FLAGS_block_cache_size = (uint64_t)n*1024*1024;
+      printf("%ld\n",FLAGS_block_cache_size);
     } else if (sscanf(argv[i], "--key_cache_size=%d%c", &n, &junk) == 1) {
       FLAGS_key_cache_size = n*1024*1024;
       leveldb::config::key_cache_size = FLAGS_key_cache_size;
@@ -1393,8 +1391,12 @@ int main(int argc, char** argv) {
       FLAGS_random_seed = d;
     } else if (sscanf(argv[i], "--run_compaction=%d%c", &n, &junk) == 1) {
       leveldb::config::run_compaction = n;
+    } else if (sscanf(argv[i], "--pre_caching=%d%c", &n, &junk) == 1) {
+      leveldb::runtime::pre_caching = n;
     } else if (sscanf(argv[i], "--print_version_info=%d%c", &n, &junk) == 1) {
       leveldb::runtime::print_version_info = n;
+    } else if (sscanf(argv[i], "--print_lazy_version_info=%d%c", &n, &junk) == 1) {
+          leveldb::runtime::print_lazy_version_info = n;
     } else if (sscanf(argv[i], "--two_phase_compaction=%d%c", &n, &junk) == 1) {
         leveldb::runtime::two_phase_compaction = n;
     } else if (sscanf(argv[i], "--warmup=%d%c", &n, &junk) == 1) {

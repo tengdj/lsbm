@@ -19,6 +19,7 @@
 #include "util/logging.h"
 #include "dlsm_param.h"
 
+
 namespace leveldb {
 
 
@@ -511,7 +512,7 @@ int Version::GetRange(const ReadOptions& options,
 	  }
   }
   range_mu_.Lock();
-  printf("%d files overlap with this key range, and %d records are found! %d\n",count,totalfound,range_query_num++);
+  fprintf(stdout,"%d files overlap with this key range, and %d records are found! %d\n",count,totalfound,range_query_num++);
   range_mu_.Unlock();
   return totalfound;
 }
@@ -1202,7 +1203,7 @@ void VersionSet::Finalize(Version* v) {
   }
   v->compaction_level_ = best_level;
   v->compaction_score_ = best_score;
-  if(!config::isdLSM())printCurVersion();
+  //if(!config::isdLSM())printCurVersion();
   //printf("so best level now is %d, and best score is %f\n\n",best_level,best_score);
 }
 //teng: print current version
@@ -1210,7 +1211,7 @@ void BasicVersionSet::printCurVersion(){
 	  if(!leveldb::runtime::print_version_info){
 		  return;
 	  }
-	  fprintf(stderr,"------------------------------------------------------------------------\n");
+	  fprintf(stderr,"basic------------------------------------------------------------------------\n");
 	  //int max = config::kNumLevels-1;
 	  int max = PhysicalEndLevel(runtime::max_print_level);
 	  for(;max>=0;max--){
@@ -1607,6 +1608,9 @@ Compaction* VersionSet::CompactRange(
 Status BasicVersionSet::MoveLevelDown(int level, port::Mutex *mutex_) {
 	assert(level+1<config::LogicalLevelnum);
     assert(current()->files_[level+1].size() == 0);
+/*    if(current()->files_[level+1].size() != 0){
+    	current()->files_[level+1].clear();
+    }*/
 
     leveldb::FileMetaData* const* files = &this->current()->files_[level][0];
     size_t num_files = this->current()->files_[level].size();
@@ -1681,7 +1685,7 @@ void Compaction::AddInputDeletions(VersionEdit* edit,int startlevel, int levelsi
       edit->DeleteFile(startlevel + which, inputs_[which][i]->number);
     }
   }
-  //for sm,
+  //for sm, the target level is not logically the next level, should specify explicitly
   for (size_t i = 0; i < inputs_[levelsize].size(); i++) {
     //printf("delete file %d from level %d\n",inputs_[which][i]->number,config::physicallevel(level_) + which);
     edit->DeleteFile(targetlevel, inputs_[levelsize][i]->number);

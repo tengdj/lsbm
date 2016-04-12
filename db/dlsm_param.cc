@@ -42,10 +42,11 @@ bool two_phase_compaction = true;
 int warm_up_status = 0;
 bool need_warm_up = false;
 bool print_version_info = false;
+bool print_lazy_version_info = false;
 int hitratio_interval = 100;
 int max_print_level = leveldb::config::LogicalLevelnum-1;
 int level0_max_score = config::kL0_SlowdownWritesTrigger/config::kL0_CompactionTrigger;
-
+bool pre_caching = false;
 }
 
 

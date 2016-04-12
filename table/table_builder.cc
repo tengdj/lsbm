@@ -9,13 +9,23 @@
 #include "leveldb/env.h"
 #include "leveldb/filter_policy.h"
 #include "leveldb/options.h"
+#include "leveldb/table.h"
 #include "table/block_builder.h"
 #include "table/filter_block.h"
 #include "table/format.h"
 #include "util/coding.h"
 #include "util/crc32c.h"
+#include "db/dlsm_param.h"
+#include "table/block.h"
+#include "leveldb/cache.h"
+
+#include <stdio.h>
+#include <vector>
+
+
 
 namespace leveldb {
+
 
 struct TableBuilder::Rep {
   Options options;
@@ -25,6 +35,7 @@ struct TableBuilder::Rep {
   Status status;
   BlockBuilder data_block;
   BlockBuilder index_block;
+  std::string first_key;
   std::string last_key;
   int64_t num_entries;
   bool closed;          // Either Finish() or Abandon() has been called.
@@ -60,11 +71,16 @@ struct TableBuilder::Rep {
   }
 };
 
-TableBuilder::TableBuilder(const Options& options, WritableFile* file)
-    : rep_(new Rep(options, file)) {
+TableBuilder::TableBuilder(const Options& options, WritableFile* file, bool pre_caching)
+    : rep_(new Rep(options, file)),
+	  pre_caching(pre_caching),
+	  cached_block_number(0),
+	  cachedRanges(NULL){
   if (rep_->filter_block != NULL) {
     rep_->filter_block->StartBlock(0);
   }
+  rangeCursor[0] = 0;
+  rangeCursor[1] = 0;
 }
 
 TableBuilder::~TableBuilder() {
@@ -94,9 +110,13 @@ void TableBuilder::Add(const Slice& key, const Slice& value) {
   assert(!r->closed);
   if (!ok()) return;
   if (r->num_entries > 0) {
-    assert(r->options.comparator->Compare(key, Slice(r->last_key)) > 0);
+    //assert(r->options.comparator->Compare(key, Slice(r->last_key)) > 0);
+  }else{
+	//fist key of the file is also the first key of the block
+	r->first_key.assign(key.data(),key.size());
   }
 
+  //also indicate this key is the first key of this block
   if (r->pending_index_entry) {
     assert(r->data_block.empty());
     r->options.comparator->FindShortestSeparator(&r->last_key, key);
@@ -116,17 +136,17 @@ void TableBuilder::Add(const Slice& key, const Slice& value) {
 
   const size_t estimated_block_size = r->data_block.CurrentSizeEstimate();
   if (estimated_block_size >= r->options.block_size) {
-    Flush();
+    Flush(pre_caching);
   }
 }
 
-void TableBuilder::Flush() {
+void TableBuilder::Flush(bool cache) {
   Rep* r = rep_;
   assert(!r->closed);
   if (!ok()) return;
   if (r->data_block.empty()) return;
   assert(!r->pending_index_entry);
-  WriteBlock(&r->data_block, &r->pending_handle);
+  WriteBlock(&r->data_block, &r->pending_handle,cache);
   if (ok()) {
     r->pending_index_entry = true;
     r->status = r->file->Flush();
@@ -136,7 +156,12 @@ void TableBuilder::Flush() {
   }
 }
 
-void TableBuilder::WriteBlock(BlockBuilder* block, BlockHandle* handle) {
+static void DeleteCachedBlock_builder(const Slice& key, void* value) {
+  Block* block = reinterpret_cast<Block*>(value);
+  delete block;
+}
+
+void TableBuilder::WriteBlock(BlockBuilder* block, BlockHandle* handle, bool cache) {
   // File format contains a sequence of blocks where each block has:
   //    block_data: uint8[n]
   //    type: uint8
@@ -167,7 +192,48 @@ void TableBuilder::WriteBlock(BlockBuilder* block, BlockHandle* handle) {
       break;
     }
   }
+  //for pre-fetching
+  if(cache&&r->options.block_cache&&cachedRanges){
+      bool shouldCache = false;
+      for(int w = 0;w<2;w++){
+      	  for(int i=rangeCursor[w];i<(*cachedRanges)[w].size();i++){
+      		  Slice *s = (*cachedRanges)[w][i];
+      		  //current writing block has passed this range, should never overlap with any coming blocks
+      		  if(r->options.comparator->Compare(r->first_key,s[1])>0){
+      			  rangeCursor[w]++;
+      		  }else if(r->options.comparator->Compare(r->last_key,s[0])>=0){
+          		  //current block overlap with this range
+      			  //printf("keys: %s %s %s %s\n",r->first_key.c_str(),s[0].ToString().c_str(),r->last_key.c_str(),s[1].ToString().c_str());
+      			  shouldCache = true;
+      			  cached_block_number++;
+      			  break;
+      		  }
+      	  }
+      	  if(shouldCache){
+      		  break;
+      	  }
+      }
+      //insert this block into cache since it will be visited in the future with a high potential
+      if(shouldCache){
+      		char cache_key_buffer[16];
+      		//EncodeFixed64(cache_key_buffer, table->rep_->cache_id);
+      		EncodeFixed64(cache_key_buffer, r->file->getFilenumber());
+      		EncodeFixed64(cache_key_buffer+8, handle->offset());
+      		Slice key(cache_key_buffer, sizeof(cache_key_buffer));
+      		BlockContents content;
+      		char *chs = new char[block_contents.size()];
+      		memcpy(chs,block_contents.data(),block_contents.size());
+      		Slice block_contents_tmp(chs,block_contents.size());
+      		content.data = block_contents_tmp;
+      		content.cachable = true;
+      		content.heap_allocated = false;
+      		Block *blockobj = new Block(content);
+      		leveldb::Cache::Handle *handle = r->options.block_cache->Insert(key,(void*)blockobj,blockobj->size(),&DeleteCachedBlock_builder);
+      		this->rep_->options.block_cache->Release(handle);
+      }
+  }
   WriteRawBlock(block_contents, type, handle);
+
   r->compressed_output.clear();
   block->Reset();
 }
@@ -198,7 +264,7 @@ Status TableBuilder::status() const {
 
 Status TableBuilder::Finish() {
   Rep* r = rep_;
-  Flush();
+  Flush(false);
   assert(!r->closed);
   r->closed = true;
 
@@ -223,7 +289,7 @@ Status TableBuilder::Finish() {
     }
 
     // TODO(postrelease): Add stats and other meta blocks
-    WriteBlock(&meta_index_block, &metaindex_block_handle);
+    WriteBlock(&meta_index_block, &metaindex_block_handle,false);
   }
 
   // Write index block
@@ -235,7 +301,7 @@ Status TableBuilder::Finish() {
       r->index_block.Add(r->last_key, Slice(handle_encoding));
       r->pending_index_entry = false;
     }
-    WriteBlock(&r->index_block, &index_block_handle);
+    WriteBlock(&r->index_block, &index_block_handle,false);
   }
 
   // Write footer

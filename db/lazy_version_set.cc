@@ -713,10 +713,10 @@ int LazyVersionSet::PhysicalEndLevel(int llevel){
 
 //teng: print all versions
 void LazyVersionSet::printCurVersion(){
-	  if(!leveldb::runtime::print_version_info){
+	  if(!leveldb::runtime::print_lazy_version_info){
 		  return;
 	  }
-	  fprintf(stderr,"------------------------------------------------------------------------\n");
+	  fprintf(stderr,"lazy------------------------------------------------------------------------\n");
 	  int max = PhysicalEndLevel(runtime::max_print_level);
 	  for(;max>=0;max--){
 	  	    	if(current_->files_[max].size()!=0)

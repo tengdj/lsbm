@@ -77,8 +77,10 @@ Status ReadBlock(RandomAccessFile* file,
   //printf("%ld\n",n);
  // assert(n<10000);
   char* buf = new char[n + kBlockTrailerSize];
+
   Slice contents;
   Status s = file->Read(handle.offset(), n + kBlockTrailerSize, &contents, buf);
+
   if (!s.ok()) {
     delete[] buf;
     return s;

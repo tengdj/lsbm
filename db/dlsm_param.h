@@ -33,7 +33,7 @@ extern int dlsm_end_level;
 extern int key_cache_size;
 
 //make enough room for two phase compaction
-const static int LogicalLevelnum = 2*2+1+1;
+const static int LogicalLevelnum = 3*2+1+1;
 const static int levels_per_logical_level = 25;
 //level 0 + other levels with two phase
 const static int kNumLevels = LogicalLevelnum*levels_per_logical_level+1;
@@ -85,10 +85,13 @@ inline bool needWarmUp(){
 }
 
 extern bool print_version_info;
+extern bool print_lazy_version_info;
 extern int hitratio_interval;
 
 extern int max_print_level;
 extern int level0_max_score;
+
+extern bool pre_caching;
 
 } // runtime
 

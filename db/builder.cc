@@ -11,6 +11,7 @@
 #include "leveldb/db.h"
 #include "leveldb/env.h"
 #include "leveldb/iterator.h"
+#include "leveldb/table_builder.h"
 
 namespace leveldb {
 
@@ -56,9 +57,12 @@ Status BuildTable(const std::string& dbname,
     if (s.ok()) {
       s = file->Sync();
     }
+
+
     if (s.ok()) {
       s = file->Close();
     }
+
     delete file;
     file = NULL;
 
@@ -68,8 +72,13 @@ Status BuildTable(const std::string& dbname,
                                               meta->number,
                                               meta->file_size);
       s = it->status();
+
       delete it;
     }
+
+
+
+
   }
 
   // Check for input iterator errors
@@ -82,6 +91,7 @@ Status BuildTable(const std::string& dbname,
   } else {
     env->DeleteFile(fname);
   }
+
   return s;
 }
 

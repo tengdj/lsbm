@@ -137,6 +137,9 @@ class LRUCache {
   LRUCache();
   ~LRUCache();
 
+  size_t getCapacity(){
+	  return capacity_;
+  }
   // Separate from constructor so caller can easily make an array of LRUCache
   void SetCapacity(size_t capacity) { capacity_ = capacity; }
 
@@ -231,6 +234,7 @@ Cache::Handle* LRUCache::LiteLookup(const Slice& key, uint32_t hash) {
 }
 
 void LRUCache::Release(Cache::Handle* handle) {
+  assert(handle!=NULL);
   MutexLock l(&mutex_);
   Unref(reinterpret_cast<LRUHandle*>(handle));
 }
@@ -259,6 +263,7 @@ Cache::Handle* LRUCache::Insert(
   }
 
   while (usage_ > capacity_ && lru_.next != &lru_) {
+
 
     LRUHandle* old = lru_.next;
     LRU_Remove(old);
@@ -298,6 +303,7 @@ class ShardedLRUCache : public Cache {
  public:
   explicit ShardedLRUCache(size_t capacity)
       : last_id_(0) {
+	  this->capacity_ = capacity;
     const size_t per_shard = (capacity + (kNumShards - 1)) / kNumShards;
     for (int s = 0; s < kNumShards; s++) {
       shard_[s].SetCapacity(per_shard);
@@ -318,6 +324,9 @@ class ShardedLRUCache : public Cache {
       return shard_[Shard(hash)].LiteLookup(key, hash);
   }
   virtual void Release(Handle* handle) {
+	if(!handle){
+		return;
+	}
     LRUHandle* h = reinterpret_cast<LRUHandle*>(handle);
     shard_[Shard(h->hash)].Release(handle);
   }
@@ -338,6 +347,9 @@ class ShardedLRUCache : public Cache {
 	        usage += shard_[s].getUsage();
 	  }
 	  return usage;
+  }
+  double Percent(){
+  	  return (double)Used()/capacity_;
   }
 };
 

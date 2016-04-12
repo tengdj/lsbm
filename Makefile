@@ -5,9 +5,9 @@
 #-----------------------------------------------
 # Uncomment exactly one of the lines labelled (A), (B), and (C) below
 # to switch between compilation modes.
-#OPT ?= -O2 -DNDEBUG       # (A) Production use (optimized mode)
- OPT ?= -g2              # (B) Debug mode, w/ full line-level debugging symbols
-# OPT ?= -O2 -g2 -DNDEBUG # (C) Profiling mode: opt, but w/debugging symbols
+OPT ?= -O3 -g2 -DNDEBUG       # (A) Production use (optimized mode)
+#OPT ?= -g2              # (B) Debug mode, w/ full line-level debugging symbols
+#OPT ?= -O3 -g2 -DNDEBUG # (C) Profiling mode: opt, but w/debugging symbols
 #-----------------------------------------------
 
 # detect what platform we're building on
@@ -17,7 +17,7 @@ $(shell CC="$(CC)" CXX="$(CXX)" TARGET_OS="$(TARGET_OS)" \
 include build_config.mk
 
 CFLAGS += -I. -I./include $(PLATFORM_CCFLAGS) $(OPT)
-CXXFLAGS += -I. -I./include $(PLATFORM_CXXFLAGS) $(OPT)
+CXXFLAGS += -I. -I./include $(PLATFORM_CXXFLAGS) $(OPT) -std=c++11
 
 LDFLAGS += $(PLATFORM_LDFLAGS)
 LIBS += $(PLATFORM_LIBS)

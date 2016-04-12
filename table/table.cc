@@ -4,6 +4,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <vector>
 #include <sys/time.h>
 #include "leveldb/table.h"
 
@@ -55,6 +56,7 @@ Status Table::Open(const Options& options,
   Slice footer_input;
   Status s = file->Read(size - Footer::kEncodedLength, Footer::kEncodedLength,
                         &footer_input, footer_space);
+
   if (!s.ok()) return s;
 
   Footer footer;
@@ -143,6 +145,7 @@ Table::~Table() {
   delete rep_;
 }
 
+
 static void DeleteBlock(void* arg, void* ignored) {
   delete reinterpret_cast<Block*>(arg);
 }
@@ -191,7 +194,11 @@ Iterator* Table::BlockReader(void* arg,
     Slice key(cache_key_buffer, sizeof(cache_key_buffer));
     //check block_cache (in memory)
     if (block_cache != NULL) {
-      cache_handle = block_cache->Lookup(key);
+      if(options.fill_cache){
+    	  cache_handle = block_cache->Lookup(key);
+      }else{
+    	  cache_handle = block_cache->LiteLookup(key);
+      }
       if (cache_handle != NULL) {
         block = reinterpret_cast<Block*>(block_cache->Value(cache_handle));
         if(!runtime::isWarmingUp()&&options.fill_cache)
@@ -256,8 +263,12 @@ Iterator* Table::BlockReader(void* arg,
     iter = NewErrorIterator(s);
   }
 
-
-  leveldb::updateCache_stat(0,block_cache_served,hdd_served);
+  double blockcache_used = 0;
+  if(block_cache){
+	  blockcache_used = (double)block_cache->Used()/block_cache->getCapacity();
+  }
+  if(!runtime::isWarmingUp())
+  leveldb::updateCache_stat(0,block_cache_served,hdd_served,0,blockcache_used);
 
   return iter;
 }
@@ -303,14 +314,14 @@ Status Table::InternalGet(const ReadOptions& options, const Slice& k,
 Status Table::EvictBlockCache(){
 	Status s;
 
-	int i=0;
-
 	Iterator* iiter = rep_->index_block->NewIterator(rep_->options.comparator);
 	Cache *memcache = rep_->options.block_cache;
-	uint64_t before, after;
-	if(memcache!=NULL){
-		before = memcache->Used();
+	if(!memcache){
+		return Status::OK();
 	}
+	uint64_t before, after;
+	before = memcache->Used();
+
 	iiter->SeekToFirst();
 
 	while (iiter->Valid()) {
@@ -322,7 +333,6 @@ Status Table::EvictBlockCache(){
 	        EncodeFixed64(cache_key_buffer, rep_->filenumber);
 	        EncodeFixed64(cache_key_buffer+8, handle.offset());
 	        Slice key(cache_key_buffer, sizeof(cache_key_buffer));
-	        if(memcache!=NULL)
 	        memcache->Erase(key);
 	    }
 	    iiter->Next();
@@ -331,14 +341,69 @@ Status Table::EvictBlockCache(){
 	    s = iiter->status();
 	}
     delete iiter;
-    if(memcache!=NULL){
-    	after = memcache->Used();
+    after = memcache->Used();
+
+    if(false&&before>after){
+      printf("evicted file: %d, before %ld and after: %ld\n",rep_->filenumber,before/rep_->options.block_size,after/rep_->options.block_size);
     }
-    if(false&&before>after)
-      printf("evicted file: %d, before %ld and after: %ld  \n",rep_->filenumber,before/rep_->options.block_size,after/rep_->options.block_size);
 	return s;
 }
 
+//TODO
+/*
+ * go through the whole block cache to check if all the blocks in this file in the cache or not,
+ * for the blocks in the cache, remember its min and max key
+ * */
+Status Table::GetKeyRangeCached(std::vector<Slice *> *result){
+
+	Status s;
+	Iterator* iiter = rep_->index_block->NewIterator(rep_->options.comparator);
+	Cache *block_cache = rep_->options.block_cache;
+	if(!block_cache){
+		return Status::OK();
+	}
+
+	iiter->SeekToFirst();
+
+	while (iiter->Valid()) {
+	    Slice handle_value = iiter->value();
+	    BlockHandle handle;
+	    Status s = handle.DecodeFrom(&handle_value);
+	    if (s.ok()) {
+	        char cache_key_buffer[16];
+	        EncodeFixed64(cache_key_buffer, rep_->filenumber);
+	        EncodeFixed64(cache_key_buffer+8, handle.offset());
+	        Slice key(cache_key_buffer, sizeof(cache_key_buffer));
+	        Cache::Handle *handle = block_cache->LiteLookup(key);
+	        if(handle){
+	        	Block *block = reinterpret_cast<Block*>(block_cache->Value(handle));
+        		Slice *minAndMax = new Slice[2];
+	        	Iterator *ittr = block->NewIterator(rep_->options.comparator);
+        		ittr->SeekToFirst();
+        		char *ch1 = new char[ittr->key().size()];
+        		memcpy(ch1,ittr->key().data(),ittr->key().size());
+        		Slice s1(ch1,ittr->key().size());
+        		ittr->SeekToLast();
+        		minAndMax[0] = s1;
+        		char *ch2 = new char[ittr->key().size()];
+        		memcpy(ch2,ittr->key().data(),ittr->key().size());
+        		Slice s2(ch2,ittr->key().size());
+        		minAndMax[1] = s2;
+		        //printf("%s %s\n",minAndMax[0].ToString().c_str(),minAndMax[1].ToString().c_str());
+		        result->push_back(minAndMax);
+	        	delete ittr;
+		        block_cache->Release(handle);
+	        }
+	    }
+	    iiter->Next();
+	}
+	if (s.ok()) {
+	    s = iiter->status();
+	}
+    delete iiter;
+
+	return s;
+}
 
 uint64_t Table::ApproximateOffsetOf(const Slice& key) const {
   Iterator* index_iter =

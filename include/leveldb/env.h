@@ -218,11 +218,19 @@ class WritableFile {
   virtual Status Close() = 0;
   virtual Status Flush() = 0;
   virtual Status Sync() = 0;
+  uint64_t getFilenumber(){
+	  return filenumber;
+  }
+
+  void setFilenumber(uint64_t filenumber){
+	  this->filenumber = filenumber;
+  }
 
  private:
   // No copying allowed
   WritableFile(const WritableFile&);
   void operator=(const WritableFile&);
+  uint64_t filenumber;
 };
 
 // An interface for writing log messages.
