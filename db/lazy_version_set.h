@@ -35,6 +35,7 @@ class LazyVersionSet: public VersionSet {
 	  int PhysicalEndLevel(int level);
       int LogicalLevel(int level);
       void printCurVersion();
+      Status ClearLevel(int level,port::Mutex *mutex_);
 
    private:
 	  friend class Compaction;

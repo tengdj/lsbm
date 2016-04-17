@@ -26,6 +26,8 @@
 #include "generator.h"
 #include "dlsm_param.h"
 
+
+using namespace std;
 // Comma-separated list of operations to run in the specified order
 //   Actual benchmarks:
 //      fillseq       -- write N values in sequential key order in async mode
@@ -83,7 +85,7 @@ static int FLAGS_write_buffer_size = 8*1024*1024;
 // Negative means use default settings.
 static uint64_t FLAGS_block_cache_size = -1;
 
-static int FLAGS_key_cache_size = 0;
+static uint64_t FLAGS_key_cache_size = 0;
 
 
 
@@ -127,10 +129,12 @@ static int FLAGS_noise_percent = 5;
 static char *FLAGS_write_ycsb_workload = NULL;
 static char *FLAGS_read_ycsb_workload = NULL;
 
-static double FLAGS_range_size = 0.001;
+static int FLAGS_range_size = 10000;
 
 static leveldb::port::Mutex range_query_mu_;
-static long long range_query_completed_ = 0;
+static int range_query_completed_ = 0;
+static int last_range_query_ = 0;
+static int last_range_count_ = 0;
 static int range_total_ = 0;
 
 static int64_t FLAGS_write_throughput = 0;
@@ -158,7 +162,7 @@ static int FLAGS_random_seed = 301;
 
 static volatile int rwrandom_read_completed = 0;
 static volatile int rwrandom_write_completed = 0;
-static int last_read = 0;
+static int last_random_read = 0;
 
 static int monitor_interval = -1; //microseconds
 static bool first_monitor_interval = true;
@@ -345,14 +349,15 @@ class Stats {
 
     done_++;
     if (done_ >= next_report_) {
+      /*
       if      (next_report_ < 1000)   next_report_ += 100;
       else if (next_report_ < 5000)   next_report_ += 500;
       else if (next_report_ < 10000)  next_report_ += 1000;
       else if (next_report_ < 50000)  next_report_ += 5000;
       else if (next_report_ < 100000) next_report_ += 10000;
       else if (next_report_ < 500000) next_report_ += 50000;
-      else                            next_report_ += 100000;
-      //next_report_ += 1000;
+      else                            next_report_ += 100000;*/
+      next_report_ += 3000;
       fprintf(stderr, "... finished %d %s\r", done_, rw==1?"reads":"writes");
       fflush(stderr);
     }
@@ -925,9 +930,9 @@ void Random_Read(ThreadState* thread) {
        if(thread->tid == write_threads){
     	   time(&now_intv);
     	   if(difftime(now_intv,start_intv)>=rw_interval){
-    	     fprintf(stdout,"readop: finishd %d ops in %d sec, timepassed: %d\n",rwrandom_read_completed-last_read,rw_interval,(int)difftime(now_intv,begin));
-    	     last_read = rwrandom_read_completed;
-    	     time(&start_intv);
+    	     fprintf(stdout,"readop: finishd %d ops in %d sec, timepassed: %d\n",rwrandom_read_completed-last_random_read,rw_interval,(int)difftime(now_intv,begin));
+    	     last_random_read = rwrandom_read_completed;
+    	     start_intv = now_intv;
     	   }
        }
        random_read_mu_.Unlock();
@@ -959,25 +964,22 @@ double random()
 }
 /*modification required for key*/
 
-int sequentialread(const ReadOptions options, double range)
+int sequentialread(const ReadOptions options, int range)
 {
-      int64_t bytes = 0;
-      int count = 0;
-
       double from_portion = random();
-      from_portion = from_portion+range>1?1-range:from_portion;
-
-      long long base = 1000000;
-      long long fromll,rangell,read_key_from,read_key_to;
-      if(FLAGS_hash_key){
-    	  fromll = (long long)(base*from_portion);
-    	  rangell = (long long)(base*range);
-
-    	  read_key_from = fromll*(llmax_/base);
-    	  read_key_to = llabs(read_key_from + rangell*(llmax_/base));
+      long long read_key_from,read_key_to;
+      if(100*random()<FLAGS_noise_percent){
+    	  read_key_from = (FLAGS_key_upto-FLAGS_key_from)*from_portion+FLAGS_key_from;
+    	  read_key_to = read_key_from+range;
+    	  if(read_key_to>=FLAGS_key_upto){
+    	   	  read_key_to = FLAGS_key_upto;
+    	  }
       }else{
     	  read_key_from = (FLAGS_read_upto-FLAGS_read_from)*from_portion+FLAGS_read_from;
-    	  read_key_to = (FLAGS_read_upto-FLAGS_read_from)*(from_portion+range)+FLAGS_read_from;
+    	  read_key_to = read_key_from+range;
+    	  if(read_key_to>=FLAGS_read_upto){
+    	      read_key_to = FLAGS_read_upto;
+    	  }
       }
 
       char startch[100],endch[100];
@@ -988,11 +990,7 @@ int sequentialread(const ReadOptions options, double range)
       std::string endstr(endch);
       Slice start(startstr);
       Slice end(endstr);
-      count = db_->GetRange(options,start,end);
-      range_query_mu_.Lock();
-      range_total_ += count;
-      range_query_mu_.Unlock();
-      return count;
+      return db_->GetRange(options,start,end);
 }
 
 void Range_Read(ThreadState* thread) {
@@ -1000,9 +998,13 @@ void Range_Read(ThreadState* thread) {
     ReadOptions options;
     options.fill_cache = false;
     time_t begin, now;
+    time_t start_intv;
+
     int done = 0;
     int count = 0;
+    int tmpcount = 0;
 	time(&begin);
+	time(&start_intv);
     while(true)
     {
       time(&now);
@@ -1012,14 +1014,31 @@ void Range_Read(ThreadState* thread) {
       if(range_query_completed_>=range_reads_&&range_reads_>=0){
     	           break;
       }
-      count += sequentialread(options,FLAGS_range_size);
-      range_query_mu_.Lock();
-      range_query_completed_++;
-      range_query_mu_.Unlock();
+      tmpcount = sequentialread(options,FLAGS_range_size);
+
+      count += tmpcount;
       done++;
+
+      range_query_mu_.Lock();
+      range_total_ += tmpcount;
+      range_query_completed_++;
+
+      time(&now);
+      if(difftime(now,start_intv)>=rw_interval){
+          	fprintf(stdout,"rangeop: finishd %d ops in %d sec, averagely %d found in each query, timepassed: %d\n",
+          			range_query_completed_-last_range_query_,
+					rw_interval,
+					(range_total_-last_range_count_)/(range_query_completed_-last_range_query_),
+					(int)difftime(now,begin));
+          	last_range_query_ = range_query_completed_;
+          	last_range_count_ = range_total_;
+          	start_intv = now;
+      }
+
+      range_query_mu_.Unlock();
     }//end while
 
-    fprintf(stdout,"\ntotally operated %d range queries (out of %lld), and %d results (out of %d) are found\n"
+    fprintf(stdout,"\ntotally operated %d range queries (out of %d), and %d results (out of %d) are found\n"
     		,done,range_query_completed_,count,range_total_);
 }
 /*modification required for key*/
@@ -1418,8 +1437,8 @@ int main(int argc, char** argv) {
 	  FLAGS_read_throughput = n;
 	  if(FLAGS_read_throughput>0)
 	  read_latency = 1000000/FLAGS_read_throughput;
-    } else if (sscanf(argv[i], "--range_size=%lf%c", &d, &junk) == 1) {
-        FLAGS_range_size = d;
+    } else if (sscanf(argv[i], "--range_size=%d%c", &n, &junk) == 1) {
+        FLAGS_range_size = n;
     } else if (sscanf(argv[i], "--range_threads=%d%c", &n, &junk) == 1) {
         FLAGS_range_threads = n;
     } else if (sscanf(argv[i], "--range_reads=%d%c", &n, &junk) == 1) {
@@ -1471,9 +1490,9 @@ int main(int argc, char** argv) {
       exit(1);
     }
   }
-  if(leveldb::config::isdLSM()||leveldb::config::isSM()){
-	  leveldb::runtime::two_phase_compaction = true;
-  }
+  //true for all
+  leveldb::runtime::two_phase_compaction = true;
+
   FLAGS_read_span = FLAGS_read_upto - FLAGS_read_from;
   FLAGS_write_span = FLAGS_write_upto - FLAGS_write_from;
   fprintf(stderr, "Range: %ld(w) %ld(r)\n", FLAGS_write_span, FLAGS_read_span);

@@ -1,6 +1,0 @@
-Range: 104857600(w) 1048576(r)
-LevelDB:    version 1.15
-Date:       Mon Apr 11 14:59:08 2016
-CPU:        8 * AMD FX(tm)-8120 Eight-Core Processor
-CPUCache:   2048 KB
-... finished 100 writes... finished 200 writes... finished 300 writes... finished 400 writes... finished 500 writes... finished 600 writes... finished 700 writes... finished 800 writes... finished 900 writes... finished 1000 writes... finished 1500 writes... finished 2000 writes... finished 2500 writes... finished 3000 writes... finished 3500 writes... finished 4000 writes... finished 4500 writes... finished 5000 writes... finished 6000 writes... finished 7000 writes

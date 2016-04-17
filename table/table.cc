@@ -201,7 +201,7 @@ Iterator* Table::BlockReader(void* arg,
       }
       if (cache_handle != NULL) {
         block = reinterpret_cast<Block*>(block_cache->Value(cache_handle));
-        if(!runtime::isWarmingUp()&&options.fill_cache)
+        if(!runtime::isWarmingUp())
         {
         	block_cache_served++;
         }
@@ -218,7 +218,7 @@ Iterator* Table::BlockReader(void* arg,
           block_cache->Release(cache_handle);
           block_cache->Erase(key);
           cache_handle = NULL;
-          if(!runtime::isWarmingUp()&&options.fill_cache)
+          if(!runtime::isWarmingUp())
           {
         	  block_cache_served--;
           }
@@ -229,7 +229,7 @@ Iterator* Table::BlockReader(void* arg,
       s = ReadBlock(table->rep_->file, options, handle, &contents);
       if (s.ok()) {
         block = new Block(contents);
-        if(!runtime::isWarmingUp()&&options.fill_cache)
+        if(!runtime::isWarmingUp())
         {
         	hdd_served++;
         }
@@ -267,7 +267,7 @@ Iterator* Table::BlockReader(void* arg,
   if(block_cache){
 	  blockcache_used = (double)block_cache->Used()/block_cache->getCapacity();
   }
-  if(!runtime::isWarmingUp())
+  if(!runtime::isWarmingUp())//&&options.fill_cache
   leveldb::updateCache_stat(0,block_cache_served,hdd_served,0,blockcache_used);
 
   return iter;

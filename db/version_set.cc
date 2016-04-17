@@ -98,6 +98,7 @@ std::string IntSetToString(const std::set<uint64_t>& s) {
 }  // namespace
 
 Version::~Version() {
+
   assert(refs_ == 0);
 
   // Remove from linked list
@@ -418,10 +419,11 @@ Status Version::Get(const ReadOptions& options,
   return Status::NotFound(Slice());  // Use an empty error message for speed
 }
 
-static int readFileinRange(int fnumber, Slice start,Slice end) {
+
+static int readFileinRange(FileMetaData* f, Slice start,Slice end) {
 
 	char name[100];
-	sprintf(name,"%s/%06d.ldb",leveldb::config::db_path,fnumber);
+	sprintf(name,"%s/%06ld.ldb",leveldb::config::db_path,f->number);
 	std::string fname(name);
 
 	/*
@@ -429,15 +431,12 @@ static int readFileinRange(int fnumber, Slice start,Slice end) {
 	 * */
 	int count = 0;
 	leveldb::Env* env = leveldb::Env::Default();
-	uint64_t file_size;
 	RandomAccessFile* file = NULL;
 	Table* table = NULL;
-	Status s = env->GetFileSize(fname, &file_size);
+	Status s = env->NewRandomAccessFile(fname, &file);
+
 	if (s.ok()) {
-	   s = env->NewRandomAccessFile(fname, &file);
-	}
-	if (s.ok()) {
-	   s = Table::Open(Options(), fnumber,file, file_size, &table);
+	   s = Table::Open(Options(), f->number,file, f->file_size, &table);
 	}
 	if (!s.ok()) {
 	   //fprintf(stderr, "wrong %s\n", s.ToString().c_str());
@@ -467,8 +466,7 @@ static int readFileinRange(int fnumber, Slice start,Slice end) {
     delete file;
     return count;
 }
-static int range_query_num=0;
-static port::Mutex range_mu_;
+
 int Version::GetRange(const ReadOptions& options,
                     const LookupKey &lkstart,
                     const LookupKey &lkend,
@@ -478,43 +476,55 @@ int Version::GetRange(const ReadOptions& options,
   const Comparator* ucmp = vset_->icmp_.user_comparator();
   stats->seek_file = NULL;
   stats->seek_file_level = -1;
-  FileMetaData* last_file_read = NULL;
-  int last_file_read_level = -1;
 
   std::vector<FileMetaData*> tmp;
-  FileMetaData* tmp2;
   //ignore level 0
   for (int level = 1; level < level_num_; level++) {
 
     size_t num_files = files_[level].size();
     if (num_files == 0) continue;
     // Get the list of files to search in this level
-    int tmpcount = 0;
     FileMetaData* const* files = &files_[level][0];
     for (uint32_t i = 0; i < num_files; i++) {
          FileMetaData* f = files[i];
-         if (!(ucmp->Compare(start, f->largest.user_key()) > 0 ||ucmp->Compare(end, f->smallest.user_key()) < 0)){
-                tmp.push_back(f);
-                tmpcount++;
+         if (ucmp->Compare(end, f->smallest.user_key()) >= 0&&ucmp->Compare(start, f->largest.user_key()) <= 0){
+             tmp.push_back(f);
          }
     }
   }
-  int count = 0;
-  int totalfound = 0;
   int found = 0;
+
+  leveldb::Options tmpopt;
   for(int i=0;i<tmp.size();i++)
   {
 	  FileMetaData* f = tmp[i];
-	  found = readFileinRange(f->number,start, end);
-	  if(found>0){
-	  count++;
-	  totalfound = totalfound + found;
-	  }
+	  Table *table;
+	  vset_->table_cache_->GetTable(f->number,f->file_size,&table);
+
+	  Iterator* iter = table->NewIterator(options);
+	  iter->SeekToFirst();
+	  //iter->Seek(start)
+	  for (; iter->Valid(); iter->Next()) {
+		  if(tmpopt.comparator->Compare(iter->key(), start) < 0){
+		  	 continue;
+		  }
+		  if(tmpopt.comparator->Compare(iter->key(), end) > 0){
+			  break;
+		  }
+	      found++;
+	   }
+
+	   Status s = iter->status();
+	   if (!s.ok()) {
+	        printf("iterator error: %s\n", s.ToString().c_str());
+	   }
+	   delete iter;
   }
-  range_mu_.Lock();
-  fprintf(stdout,"%d files overlap with this key range, and %d records are found! %d\n",count,totalfound,range_query_num++);
-  range_mu_.Unlock();
-  return totalfound;
+
+  //printf("%s %s %ld files are checked, %d records are found\n",start.ToString().c_str(),end.ToString().c_str(),tmp.size(),found);
+  tmp.clear();
+
+  return found;
 }
 
 bool Version::UpdateStats(const GetStats& stats) {
@@ -863,8 +873,7 @@ class BasicVersionSet::Builder {
       std::vector<FileMetaData*>* files = &v->files_[level];
       if (level > 0 && !files->empty()) {
         // Must not overlap
-        assert(vset_->icmp_.Compare((*files)[files->size()-1]->largest,
-                                    f->smallest) < 0);
+        assert(vset_->icmp_.Compare((*files)[files->size()-1]->largest,f->smallest) < 0);
       }
       f->refs++;
       files->push_back(f);
@@ -1014,6 +1023,7 @@ Status BasicVersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
     }
   }
 
+  printCurVersion();
   return s;
 }
 
@@ -1147,8 +1157,9 @@ double VersionSet::calculate_compaction_score(Version *v, int level) {
 	if (TotalLevelSize(v,level) == 0)
 		return score;
     if (level == 1&&TotalLevelSize(v,2) == 0) {
-		score = std::max( (double)(TotalLevelSize(v,1)+TotalLevelSize(v,2)) / MaxMBytesForLevel(1) //
-			, (v->files_[0].size() / (double) config::kL0_SlowdownWritesTrigger)+0.01 );
+    	score = (double)(TotalLevelSize(v,1)+TotalLevelSize(v,2)) / MaxMBytesForLevel(1); //
+    	//score = std::max( (double)(TotalLevelSize(v,1)+TotalLevelSize(v,2)) / MaxMBytesForLevel(1) //
+			//, (v->files_[0].size() / (double) config::kL0_SlowdownWritesTrigger)+0.01 );
 	} else if (level % 2 == 0) { // LX.R
 		score = ((double)TotalLevelSize(v,level-1)+(double)TotalLevelSize(v,level)) / MaxMBytesForLevel(level);    // LX.R
 	} else {
@@ -1188,7 +1199,7 @@ void VersionSet::Finalize(Version* v) {
   	      score = score<=runtime::level0_max_score?score:runtime::level0_max_score;
   	    } else {
   	      // Compute the ratio of current size to size limit.
-  	      if(config::isLSM()&&!leveldb::runtime::two_phase_compaction){
+  	      if(!leveldb::runtime::two_phase_compaction){
   	        score = static_cast<double>(TotalLevelSize(v,level)) / MaxMBytesForLevel(level);
   	      }else{
   	    	//teng: for two phase compaction, calculate score differently
@@ -1607,6 +1618,30 @@ Compaction* VersionSet::CompactRange(
 
 Status BasicVersionSet::MoveLevelDown(int level, port::Mutex *mutex_) {
 	assert(level+1<config::LogicalLevelnum);
+    //assert(current()->files_[level+1].size() == 0);
+    if(current()->files_[level+1].size() != 0){
+    	this->ClearLevel(level+1,mutex_);
+    }
+
+
+    leveldb::FileMetaData* const* files = &this->current()->files_[level][0];
+
+    size_t num_files = this->current()->files_[level].size();
+    VersionEdit edit;
+    for(int i = 0; i < num_files; i++) {
+    	leveldb::FileMetaData* f = files[i];
+    	edit.DeleteFile(level, f->number);
+    	edit.AddFile(level + 1, f->number, f->file_size,
+    	                       f->smallest, f->largest);
+    }
+
+    leveldb::Status status = this->LogAndApply(&edit, mutex_);
+    this->ResetPointer(level+1);
+    return status;
+}
+
+Status BasicVersionSet::ClearLevel(int level, port::Mutex *mutex_) {
+	assert(level+1<config::LogicalLevelnum);
     assert(current()->files_[level+1].size() == 0);
 /*    if(current()->files_[level+1].size() != 0){
     	current()->files_[level+1].clear();
@@ -1618,8 +1653,6 @@ Status BasicVersionSet::MoveLevelDown(int level, port::Mutex *mutex_) {
     for(int i = 0; i < num_files; i++) {
     	leveldb::FileMetaData* f = files[i];
     	edit.DeleteFile(level, f->number);
-    	edit.AddFile(level + 1, f->number, f->file_size,
-    	                       f->smallest, f->largest);
     }
     leveldb::Status status = this->LogAndApply(&edit, mutex_);
     this->ResetPointer(level+1);

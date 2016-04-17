@@ -319,6 +319,7 @@ Status LazyVersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
     }
   }
 
+  printCurVersion();
   return s;
 }
 
@@ -683,6 +684,33 @@ Status LazyVersionSet::MoveLevelDown(int level, port::Mutex *mutex_) {
     targetPLevel[level] = level*config::levels_per_logical_level+1;
     }
     //make room for this turn compaction
+    if(level+2<config::LogicalLevelnum&&level!=2){
+    	targetPLevel[level+2]--;
+    }
+    this->ResetPointer(level+1);
+    leveldb::Status status = LogAndApply(&edit, mutex_);
+    return status;
+}
+
+//teng: function to clear this level
+Status LazyVersionSet::ClearLevel(int level, port::Mutex *mutex_) {
+
+    int startlevel = this->PhysicalStartLevel(level);
+    int endlevel = this->PhysicalEndLevel(level);
+    VersionEdit edit;
+    for(int curlevel = startlevel;curlevel<=endlevel;curlevel++){
+    	leveldb::FileMetaData* const* files = &current()->files_[curlevel][0];
+    	size_t num_files = current()->files_[curlevel].size();
+    	for(int i = 0; i < num_files; i++) {
+    		leveldb::FileMetaData* f = files[i];
+    	  	edit.DeleteFile(curlevel, f->number);
+    	}
+    }
+    //reset current level targetPLevel to the last level plus one(it will be set to the last level latter)
+    if(level>2){
+    	targetPLevel[level] = level*config::levels_per_logical_level+1;
+    }
+    //create a new recycle bin for next level
     if(level+2<config::LogicalLevelnum&&level!=2){
     	targetPLevel[level+2]--;
     }

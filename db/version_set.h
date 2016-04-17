@@ -370,6 +370,8 @@ class VersionSet {
 
   //teng: for two phase compaction
   virtual Status MoveLevelDown(int level, leveldb::port::Mutex *mutex_)=0;
+  virtual Status ClearLevel(int level, leveldb::port::Mutex *mutex_)=0;
+
   virtual int CompactionTargetLevel(int level)=0;
   virtual int PhysicalStartLevel(int level) = 0;
   virtual int PhysicalEndLevel(int level) = 0;
@@ -470,6 +472,8 @@ class BasicVersionSet: public VersionSet {
 	  Compaction* PickCompaction();
 	  void SetupOtherInputs(Compaction* c);
 	  Status MoveLevelDown(int level, port::Mutex *mutex_);
+	  Status ClearLevel(int level, port::Mutex *mutex_);
+
 	  uint64_t TotalLevelSize(Version *v, int level);
 	  int NumLevelFiles(int level);
 	  class Builder;

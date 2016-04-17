@@ -155,17 +155,15 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
   // Reserve ten files or so for other uses and give the rest to TableCache.
   const int table_cache_size = options_.max_open_files - kNumNonTableCacheFiles;
   table_cache_ = new TableCache(dbname_, &options_, table_cache_size);
-  if(config::isLSM()||config::isdLSM()){
+  if(!config::isSM()){
   versions_ = new BasicVersionSet(dbname_, &options_, table_cache_,
                              &internal_comparator_);
+  lazy_versions_ = new LazyVersionSet(dbname_, &options_, table_cache_,
+  	                               &internal_comparator_);
   }
   else{
   versions_ = new LazyVersionSet(dbname_, &options_, table_cache_,
               &internal_comparator_);
-  }
-  if(config::isdLSM()){
-   lazy_versions_ = new LazyVersionSet(dbname_, &options_, table_cache_,
-	                               &internal_comparator_);
   }
 
 }
@@ -185,7 +183,7 @@ DBImpl::~DBImpl() {
   }
 
   delete versions_;
-  if(config::isdLSM()){
+  if(!config::isSM()){
 	  delete lazy_versions_;
   }
   if (mem_ != NULL) mem_->Unref();
@@ -217,7 +215,7 @@ Status DBImpl::NewDB() {
   WritableFile* file;
   WritableFile* file_sm;
   Status s;
-  if(config::isLSM()||config::isdLSM()){
+  if(!config::isSM()){
         s = env_->NewWritableFile(manifest, &file);
         if (!s.ok()) {
           return s;
@@ -233,7 +231,8 @@ Status DBImpl::NewDB() {
        }
        delete file;
   }
-  if(config::isSM()||config::isdLSM()){
+  //all modes need a lazy version of data
+  if(true){
   	  manifest_sm = manifest+"_sm";
       s = env_->NewWritableFile(manifest_sm, &file_sm);
       if (!s.ok()) {
@@ -253,12 +252,14 @@ Status DBImpl::NewDB() {
 
   if (s.ok()) {
     // Make "CURRENT" file that points to the new manifest file.
-	if(config::isLSM()||config::isdLSM()){
+	if(!config::isSM()){
 	    s = SetCurrentFile(env_, dbname_, 1);
 	}
-    if(config::isSM()||config::isdLSM()){
-    	s = SetCurrentSMFile(env_,dbname_,1);
-    }
+	//all need a lazy version
+    //if(config::isSM()||config::isdLSM()||config::isLSM()){
+    //}
+	s = SetCurrentSMFile(env_,dbname_,1);
+
   } else {
     env_->DeleteFile(manifest);
   }
@@ -284,7 +285,7 @@ void DBImpl::DeleteObsoleteFiles() {
   // Make a set of all of the live files
   std::set<uint64_t> live = pending_outputs_;
   versions_->AddLiveFiles(&live);
-  if(config::isdLSM()){
+  if(!config::isSM()){
 	  lazy_versions_->AddLiveFiles(&live);
   }
 
@@ -349,8 +350,7 @@ Status DBImpl::Recover(VersionEdit* edit) {
   }
   std::string currentfilename = CurrentFileName(dbname_);
   std::string currentsmfilename = CurrentFileName(dbname_)+"_sm";
-  if (((config::isLSM()||config::isdLSM())&&!env_->FileExists(currentfilename))||
-		  ((config::isSM()||config::isdLSM())&&!env_->FileExists(currentsmfilename))) {
+  if ((!config::isSM()&&!env_->FileExists(currentfilename))||!env_->FileExists(currentsmfilename)) {
     if (options_.create_if_missing) {
       s = NewDB();
       if (!s.ok()) {
@@ -368,7 +368,7 @@ Status DBImpl::Recover(VersionEdit* edit) {
   }
 
   s = versions_->Recover();
-  if(s.ok() && config::isdLSM()){
+  if(s.ok() && !config::isSM()){
 	 s = lazy_versions_->Recover();
   }
   if (s.ok()) {
@@ -765,14 +765,16 @@ void DBImpl::BackgroundCompaction() {
     c->edit()->AddFile(c->level() + 1, f->number, f->file_size,
                        f->smallest, f->largest);
     status = versions_->LogAndApply(c->edit(), &mutex_);
-    versions_->printCurVersion();
-    if(config::isdLSM()&&c->level()>1&&c->level()<=config::dlsm_end_level){
+    //versions_->printCurVersion();
+    if(!config::isSM()&&c->level()>1&&c->level()<=config::dlsm_end_level){
     	VersionEdit lazy_edit;
     	if(c->level()+1 <= config::dlsm_end_level){
     		int lazy_targetlevel = lazy_versions_->CompactionTargetLevel(c->level()+1);
     		lazy_edit.AddFile(lazy_targetlevel,f->number,f->file_size,f->smallest,f->largest);
     	}
 
+    	//TODO we will not keep the deletion part of the compaction buffer, therefore this part will not contain any data
+    	/*
     	InternalKey smallest,largest;
     	smallest = f->smallest;
     	largest = f->largest;
@@ -786,8 +788,9 @@ void DBImpl::BackgroundCompaction() {
     	     }
     	     needdelete.clear();
     	}
+    	*/
     	lazy_versions_->LogAndApply(&lazy_edit,&mutex_);
-    	lazy_versions_->printCurVersion();
+    	//lazy_versions_->printCurVersion();
     }
 
     if (!status.ok()) {
@@ -803,10 +806,10 @@ void DBImpl::BackgroundCompaction() {
   } else if(!is_manual &&c->IsLevelNeedsMove()){
 	  //teng: Move entire level to next level, for two phase compaction
 	  	status = versions_->MoveLevelDown(c->level(), &mutex_);
-	  	if(status.ok()&&config::isdLSM()){
-	  		status = lazy_versions_->MoveLevelDown(c->level(),&mutex_);
-	  		versions_->printCurVersion();
-	  		lazy_versions_->printCurVersion();
+  		//versions_->printCurVersion();
+	  	if(status.ok()&&!config::isSM()){
+	  		status = lazy_versions_->ClearLevel(c->level(),&mutex_);
+	  		//lazy_versions_->printCurVersion();
 	  	}
 	  	if (!status.ok()) {
 	  		RecordBackgroundError(status);
@@ -892,7 +895,7 @@ Status DBImpl::OpenCompactionOutputFile(CompactionState* compact) {
   if (s.ok()) {
 	//teng: later will be used for pre-caching hot blocks after compaction
 	compact->outfile->setFilenumber(file_number);
-    compact->builder = new TableBuilder(options_, compact->outfile, runtime::pre_caching);
+    compact->builder = new TableBuilder(options_, compact->outfile, runtime::pre_caching&&!config::isSM());
   }
   return s;
 }
@@ -979,10 +982,10 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
     //printf("file %d is added to level %d\n",out.number,targetlevel);
   }
   Status s = versions_->LogAndApply(compact->compaction->edit(), &mutex_);
-  versions_->printCurVersion();
+  //versions_->printCurVersion();
 
   //teng: dlsm
-  if(config::isdLSM()&&level>1){
+  if(!config::isSM()&&level>1){
 	  int lazy_targetlevel = lazy_versions_->CompactionTargetLevel(level+1);
 	  Compaction *compaction = compact->compaction;
 	  VersionEdit lazy_edit;
@@ -996,10 +999,15 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
     	   if(level+1 <= config::dlsm_end_level)
            lazy_edit.AddFile(lazy_targetlevel,file->number,file->file_size,file->smallest,file->largest);
       }
+      //TODO we will not keep the deletion part of the compaction buffer, therefore this part will not contain any data
+
+      /*
       //the input file of C(i) is read in order, therefore the smallest key of the input files is the smallest key of the first file, so does the largest key
+
       InternalKey smallest,largest;
       smallest = compaction->input(0,0)->smallest;
       largest = compaction->input(0,compaction->num_input_files(0)-1)->largest;
+
 
       //lazy_versions_->GetRange(inputs,&smallest,&largest);
       if(level==6)
@@ -1013,9 +1021,9 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
         	 lazy_edit.DeleteFile(i,needdelete[j]->number);
           }
           needdelete.clear();
-      }
+      }*/
       lazy_versions_->LogAndApply(&lazy_edit,&mutex_);
-      lazy_versions_->printCurVersion();
+      //lazy_versions_->printCurVersion();
   }
   return s;
 }
@@ -1049,8 +1057,9 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
    * */
   size_t cached_block_number = 0;
   std::vector<std::vector<Slice*>> cachedRanges;
-  int levelsize = config::isSM()?config::levels_per_logical_level+1:2;
-  if(runtime::pre_caching&&options_.block_cache)
+  int levelsize = (config::isSM()?config::levels_per_logical_level+1:2);
+
+  if(!config::isSM()&&runtime::pre_caching&&options_.block_cache)
   {
 	  Compaction *compactinfo = compact->compaction;
 	  Cache *block_cache = options_.block_cache;
@@ -1331,6 +1340,7 @@ Status DBImpl::Get(const ReadOptions& options,
 		notcached = 0;
 	}
 	*/
+  //check the KV-cache first if exists
   Cache::Handle *keyhandle = NULL;
   if(options_.key_cache_){
 	  keyhandle = options_.key_cache_->Lookup(key);
@@ -1380,7 +1390,7 @@ Status DBImpl::Get(const ReadOptions& options,
     } else if (imm != NULL && imm->Get(lkey, value, &s)) {
       // Done
     } else {
-      if(config::isdLSM()){
+      if(config::isdLSM()){//for dLSM
 
     	  //the logical level 0 and 1 are not part of compaction buffer, check them first
     	  s = current->Get(options,lkey,value,&stats,0,2);
@@ -1388,13 +1398,19 @@ Status DBImpl::Get(const ReadOptions& options,
     	  if(s.IsNotFound())
     	  {
     		 //printf("%d,%d\n",lazy_versions_->PhysicalStartLevel(3),lazy_versions_->PhysicalEndLevel(config::dlsm_end_level));
-             s = current_lazy->Get(options, lkey, value, &stats ,lazy_versions_->PhysicalStartLevel(3), lazy_versions_->PhysicalEndLevel(config::dlsm_end_level));
+             s = current_lazy->Get(options, lkey, value, &stats ,lazy_versions_->PhysicalStartLevel(3), lazy_versions_->PhysicalEndLevel(3));
+    	  }
+    	  if(s.IsNotFound()){
+    	     s = current->Get(options,lkey,value,&stats,4,4);
+    	  }
+    	  if(s.IsNotFound()){
+             s = current_lazy->Get(options, lkey, value, &stats ,lazy_versions_->PhysicalStartLevel(5), lazy_versions_->PhysicalEndLevel(5));
     	  }
     	  //if not found, return to LSM-tree to read the rest levels
     	  if(s.IsNotFound()){
-    		 s = current->Get(options,lkey,value,&stats,config::dlsm_end_level+1);
+    		 s = current->Get(options,lkey,value,&stats,config::dlsm_end_level);
     	  }
-      }else{
+      }else{//for LSM and SM
     	  s = current->Get(options, lkey, value, &stats);
       }
       have_stat_update = true;
@@ -1412,6 +1428,7 @@ Status DBImpl::Get(const ReadOptions& options,
 	  current_lazy->Unref();
   }
 
+  //fill the KV-cache if exist
   if(options_.key_cache_&&value&&keyhandle==NULL){
 
 	  keyhandle = options_.key_cache_->Insert(key,(void *)new std::string(value->data(),value->size()),key.size()+value->size(),&deleteString);
@@ -1422,7 +1439,7 @@ Status DBImpl::Get(const ReadOptions& options,
 
   return s;
 }
-
+//do range query
 int DBImpl::GetRange(const ReadOptions& options,const Slice &start,const Slice &end)
 {
    int count = 0;
@@ -1436,9 +1453,9 @@ int DBImpl::GetRange(const ReadOptions& options,const Slice &start,const Slice &
    LookupKey lstart(start, snapshot);
    LookupKey lend(end, snapshot);
    Version* current = versions_->current();
-   current->Ref();
+   //current->Ref();
    count = current->GetRange(options, lstart, lend, &stats);
-   current->Unref();
+   //current->Unref();
    return count;
 }
 
