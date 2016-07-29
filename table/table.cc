@@ -267,7 +267,7 @@ Iterator* Table::BlockReader(void* arg,
   if(block_cache){
 	  blockcache_used = (double)block_cache->Used()/block_cache->getCapacity();
   }
-  if(!runtime::isWarmingUp())//&&options.fill_cache
+  if(!runtime::isWarmingUp()&&options.fill_cache)
   leveldb::updateCache_stat(0,block_cache_served,hdd_served,0,blockcache_used);
 
   return iter;

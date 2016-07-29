@@ -79,8 +79,7 @@ extern bool ParseFileName(const std::string& filename,
 extern Status SetCurrentFile(Env* env, const std::string& dbname,
                              uint64_t descriptor_number);
 
-extern Status SetCurrentSMFile(Env* env, const std::string& dbname,
-        uint64_t descriptor_number);
+
 
 }  // namespace leveldb
 

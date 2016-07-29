@@ -226,7 +226,7 @@ void TableBuilder::WriteBlock(BlockBuilder* block, BlockHandle* handle, bool cac
       		Slice block_contents_tmp(chs,block_contents.size());
       		content.data = block_contents_tmp;
       		content.cachable = true;
-      		content.heap_allocated = false;
+      		content.heap_allocated = true;
       		Block *blockobj = new Block(content);
       		leveldb::Cache::Handle *handle = r->options.block_cache->Insert(key,(void*)blockobj,blockobj->size(),&DeleteCachedBlock_builder);
       		this->rep_->options.block_cache->Release(handle);

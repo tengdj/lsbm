@@ -13,16 +13,22 @@
 namespace leveldb {
 
 class VersionSet;
+class SortedTable;
+enum SortedTableType{
 
+	DELETION_PART = 0,
+	INSERTION_PART = 1,
+	COMPACTION_BUFFER = 2
+
+};
 struct FileMetaData {
   int refs;
-  int allowed_seeks;          // Seeks allowed until compaction
   uint64_t number;
   uint64_t file_size;         // File size in bytes
   InternalKey smallest;       // Smallest internal key served by table
   InternalKey largest;        // Largest internal key served by table
 
-  FileMetaData() : refs(0), allowed_seeks(1 << 30), file_size(0) { }
+  FileMetaData() : refs(0), file_size(0), number(0){ }
 };
 
 class VersionEdit {
@@ -31,6 +37,13 @@ class VersionEdit {
   ~VersionEdit() { }
 
   void Clear();
+
+  void CloneMeta(VersionEdit *edit){
+	  edit->SetLastSequence(last_sequence_);
+	  edit->SetLogNumber(log_number_);
+	  edit->SetNextFile(next_file_number_);
+	  edit->SetPrevLogNumber(prev_log_number_);
+  }
 
   void SetComparatorName(const Slice& name) {
     has_comparator_ = true;
@@ -52,17 +65,11 @@ class VersionEdit {
     has_last_sequence_ = true;
     last_sequence_ = seq;
   }
-  void SetCompactPointer(int level, const InternalKey& key) {
-    compact_pointers_.push_back(std::make_pair(level, key));
-  }
-  void SetTargetPLevel(int level, int plevel) {
-      targetPLevel.push_back(std::make_pair(level, plevel));
-  }
 
   // Add the specified file at the specified number.
   // REQUIRES: This version has not been saved (see VersionSet::SaveTo)
   // REQUIRES: "smallest" and "largest" are smallest and largest keys in file
-  void AddFile(int level, uint64_t file,
+  void AddFile(SortedTableType type, int level, uint64_t file,
                uint64_t file_size,
                const InternalKey& smallest,
                const InternalKey& largest) {
@@ -71,18 +78,21 @@ class VersionEdit {
     f.file_size = file_size;
     f.smallest = smallest;
     f.largest = largest;
-    new_files_.push_back(std::make_pair(level, f));
+    new_files_[type].push_back(std::make_pair(level, f));
   }
 
+
   // Delete the specified "file" from the specified "level".
-  void DeleteFile(int level, uint64_t file) {
-    deleted_files_.insert(std::make_pair(level, file));
+  void DeleteFile(SortedTableType type, int level, uint64_t file) {
+	assert(type!=COMPACTION_BUFFER);//can only be deleted in batch in the level move part
+    deleted_files_[type].insert(std::make_pair(level, file));
   }
 
   void EncodeTo(std::string* dst) const;
   Status DecodeFrom(const Slice& src);
 
   std::string DebugString() const;
+  SortedTable* CloneSortedTable(SortedTable *);
 
  private:
   friend class VersionSet;
@@ -101,12 +111,9 @@ class VersionEdit {
   bool has_prev_log_number_;
   bool has_next_file_number_;
   bool has_last_sequence_;
-  //teng: save current target level
-  bool has_target_plevel_;
-  std::vector< std::pair<int, uint32_t> > targetPLevel;
-  std::vector< std::pair<int, InternalKey> > compact_pointers_;
-  DeletedFileSet deleted_files_;
-  std::vector< std::pair<int, FileMetaData> > new_files_;
+
+  DeletedFileSet deleted_files_[3];
+  std::vector< std::pair<int, FileMetaData> > new_files_[3];
 };
 
 }  // namespace leveldb

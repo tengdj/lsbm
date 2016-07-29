@@ -19,7 +19,6 @@
 #include "db/memtable.h"
 #include "db/table_cache.h"
 #include "db/version_set.h"
-#include "db/lazy_version_set.h"
 #include "db/write_batch_internal.h"
 #include "leveldb/db.h"
 #include "leveldb/env.h"
@@ -33,7 +32,6 @@
 #include "util/coding.h"
 #include "util/logging.h"
 #include "util/mutexlock.h"
-#include "util/ssd_cache.h"
 #include "leveldb/cache.h"
 
 #include "util/cache_stat.h"
@@ -147,25 +145,16 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
       log_(NULL),
       seed_(0),
       tmp_batch_(new WriteBatch),
-      bg_compaction_scheduled_(false),
-      manual_compaction_(NULL){
+      bg_compaction_scheduled_(false){
   mem_->Ref();
   has_imm_.Release_Store(NULL);
 
   // Reserve ten files or so for other uses and give the rest to TableCache.
   const int table_cache_size = options_.max_open_files - kNumNonTableCacheFiles;
   table_cache_ = new TableCache(dbname_, &options_, table_cache_size);
-  if(!config::isSM()){
+
   versions_ = new BasicVersionSet(dbname_, &options_, table_cache_,
                              &internal_comparator_);
-  lazy_versions_ = new LazyVersionSet(dbname_, &options_, table_cache_,
-  	                               &internal_comparator_);
-  }
-  else{
-  versions_ = new LazyVersionSet(dbname_, &options_, table_cache_,
-              &internal_comparator_);
-  }
-
 }
 
 DBImpl::~DBImpl() {
@@ -181,11 +170,7 @@ DBImpl::~DBImpl() {
   if (db_lock_ != NULL) {
     env_->UnlockFile(db_lock_);
   }
-
   delete versions_;
-  if(!config::isSM()){
-	  delete lazy_versions_;
-  }
   if (mem_ != NULL) mem_->Unref();
   if (imm_ != NULL) imm_->Unref();
   delete tmp_batch_;
@@ -193,11 +178,14 @@ DBImpl::~DBImpl() {
   delete logfile_;
   delete table_cache_;
 
+
   if (owns_info_log_) {
     delete options_.info_log;
+
   }
   if (owns_cache_) {
     delete options_.block_cache;
+
   }
 
 
@@ -211,55 +199,27 @@ Status DBImpl::NewDB() {
   new_db.SetLastSequence(0);
 
   std::string manifest = DescriptorFileName(dbname_, 1);
-  std::string manifest_sm;
   WritableFile* file;
-  WritableFile* file_sm;
   Status s;
-  if(!config::isSM()){
-        s = env_->NewWritableFile(manifest, &file);
-        if (!s.ok()) {
-          return s;
+  s = env_->NewWritableFile(manifest, &file);
+  if (!s.ok()) {
+     return s;
+  }
+  {
+        log::Writer log(file);
+        std::string record;
+        new_db.EncodeTo(&record);
+        s = log.AddRecord(record);
+        if (s.ok()) {
+          s = file->Close();
         }
-       {
-         log::Writer log(file);
-         std::string record;
-         new_db.EncodeTo(&record);
-         s = log.AddRecord(record);
-         if (s.ok()) {
-           s = file->Close();
-         }
-       }
-       delete file;
   }
-  //all modes need a lazy version of data
-  if(true){
-  	  manifest_sm = manifest+"_sm";
-      s = env_->NewWritableFile(manifest_sm, &file_sm);
-      if (!s.ok()) {
-        return s;
-      }
-     {
-       log::Writer log(file_sm);
-       std::string record;
-       new_db.EncodeTo(&record);
-       s = log.AddRecord(record);
-       if (s.ok()) {
-         s = file_sm->Close();
-       }
-     }
-     delete file_sm;
-  }
+  delete file;
+
 
   if (s.ok()) {
     // Make "CURRENT" file that points to the new manifest file.
-	if(!config::isSM()){
-	    s = SetCurrentFile(env_, dbname_, 1);
-	}
-	//all need a lazy version
-    //if(config::isSM()||config::isdLSM()||config::isLSM()){
-    //}
-	s = SetCurrentSMFile(env_,dbname_,1);
-
+	s = SetCurrentFile(env_, dbname_, 1);
   } else {
     env_->DeleteFile(manifest);
   }
@@ -285,9 +245,6 @@ void DBImpl::DeleteObsoleteFiles() {
   // Make a set of all of the live files
   std::set<uint64_t> live = pending_outputs_;
   versions_->AddLiveFiles(&live);
-  if(!config::isSM()){
-	  lazy_versions_->AddLiveFiles(&live);
-  }
 
   std::vector<std::string> filenames;
   env_->GetChildren(dbname_, &filenames); // Ignoring errors on purpose
@@ -349,8 +306,7 @@ Status DBImpl::Recover(VersionEdit* edit) {
     return s;
   }
   std::string currentfilename = CurrentFileName(dbname_);
-  std::string currentsmfilename = CurrentFileName(dbname_)+"_sm";
-  if ((!config::isSM()&&!env_->FileExists(currentfilename))||!env_->FileExists(currentsmfilename)) {
+  if (!env_->FileExists(currentfilename)) {
     if (options_.create_if_missing) {
       s = NewDB();
       if (!s.ok()) {
@@ -368,9 +324,6 @@ Status DBImpl::Recover(VersionEdit* edit) {
   }
 
   s = versions_->Recover();
-  if(s.ok() && !config::isSM()){
-	 s = lazy_versions_->Recover();
-  }
   if (s.ok()) {
     SequenceNumber max_sequence(0);
 
@@ -389,6 +342,7 @@ Status DBImpl::Recover(VersionEdit* edit) {
       return s;
     }
     std::set<uint64_t> expected;
+
     versions_->AddLiveFiles(&expected);
     uint64_t number;
     FileType type;
@@ -555,10 +509,10 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
   if (s.ok() && meta.file_size > 0) {
     const Slice min_user_key = meta.smallest.user_key();
     const Slice max_user_key = meta.largest.user_key();
-    if (base != NULL) {
-      level = base->PickLevelForMemTableOutput(min_user_key, max_user_key);
-    }
-    edit->AddFile(level, meta.number, meta.file_size,
+    //all mem table will be write to the deletion part of the level 0,
+    //and then merge together to the insertion part. and finally move to the deletion part of level 1
+    level = 0;
+    edit->AddFile(DELETION_PART, level, meta.number, meta.file_size,
                   meta.smallest, meta.largest);
   }
 
@@ -603,75 +557,6 @@ void DBImpl::CompactMemTable() {
   }
 }
 
-void DBImpl::CompactRange(const Slice* begin, const Slice* end) {
-  int max_level_with_files = 1;
-  {
-    MutexLock l(&mutex_);
-    Version* base = versions_->current();
-    for (int level = 1; level < config::kNumLevels; level++) {
-      if (base->OverlapInLevel(level, begin, end)) {
-        max_level_with_files = level;
-      }
-    }
-  }
-  TEST_CompactMemTable(); // TODO(sanjay): Skip if memtable does not overlap
-  for (int level = 0; level < max_level_with_files; level++) {
-    TEST_CompactRange(level, begin, end);
-  }
-}
-
-void DBImpl::TEST_CompactRange(int level, const Slice* begin,const Slice* end) {
-  assert(level >= 0);
-  assert(level + 1 < config::kNumLevels);
-
-  InternalKey begin_storage, end_storage;
-
-  ManualCompaction manual;
-  manual.level = level;
-  manual.done = false;
-  if (begin == NULL) {
-    manual.begin = NULL;
-  } else {
-    begin_storage = InternalKey(*begin, kMaxSequenceNumber, kValueTypeForSeek);
-    manual.begin = &begin_storage;
-  }
-  if (end == NULL) {
-    manual.end = NULL;
-  } else {
-    end_storage = InternalKey(*end, 0, static_cast<ValueType>(0));
-    manual.end = &end_storage;
-  }
-
-  MutexLock l(&mutex_);
-  while (!manual.done && !shutting_down_.Acquire_Load() && bg_error_.ok()) {
-    if (manual_compaction_ == NULL) {  // Idle
-      manual_compaction_ = &manual;
-      MaybeScheduleCompaction();
-    } else {  // Running either my compaction or another compaction.
-      bg_cv_.Wait();
-    }
-  }
-  if (manual_compaction_ == &manual) {
-    // Cancel my manual compaction since we aborted early for some reason.
-    manual_compaction_ = NULL;
-  }
-}
-
-Status DBImpl::TEST_CompactMemTable() {
-  // NULL batch means just wait for earlier writes to be done
-  Status s = Write(WriteOptions(), NULL);
-  if (s.ok()) {
-    // Wait until the compaction completes
-    MutexLock l(&mutex_);
-    while (imm_ != NULL && bg_error_.ok()) {
-      bg_cv_.Wait();
-    }
-    if (imm_ != NULL) {
-      s = bg_error_;
-    }
-  }
-  return s;
-}
 
 void DBImpl::RecordBackgroundError(const Status& s) {
   mutex_.AssertHeld();
@@ -690,7 +575,6 @@ void DBImpl::MaybeScheduleCompaction() {
   } else if (!bg_error_.ok()) {
     // Already got an error; no more changes
   } else if (imm_ == NULL &&
-             manual_compaction_ == NULL &&
              !versions_->NeedsCompaction()) {
     // No work to be done
   } else {
@@ -734,93 +618,47 @@ void DBImpl::BackgroundCompaction() {
   }
 
   leveldb::Compaction* c;
-  bool is_manual = (manual_compaction_ != NULL);
-  InternalKey manual_end;
-  if (is_manual) {
-    ManualCompaction* m = manual_compaction_;
-    c = versions_->CompactRange(m->level, m->begin, m->end);
-    m->done = (c == NULL);
-    if (c != NULL) {
-      manual_end = c->input(0, c->num_input_files(0) - 1)->largest;
-    }
-    Log(options_.info_log,
-        "Manual compaction at level-%d from %s .. %s; will stop at %s\n",
-        m->level,
-        (m->begin ? m->begin->DebugString().c_str() : "(begin)"),
-        (m->end ? m->end->DebugString().c_str() : "(end)"),
-        (m->done ? "(end)" : manual_end.DebugString().c_str()));
-  } else {
-    c = versions_->PickCompaction();
-  }
+  c = versions_->PickCompaction();
+
 
 
   Status status;
   if (c == NULL) {
     // Nothing to do
-  } else if (!is_manual &&!config::isSM()&& c->IsTrivialMove()) {
+  } else if (c->IsTrivialMove()) {//trivial move
     // Move file to next level
     assert(c->num_input_files(0) == 1);
     FileMetaData* f = c->input(0, 0);
-    c->edit()->DeleteFile(c->level(), f->number);
-    c->edit()->AddFile(c->level() + 1, f->number, f->file_size,
+    c->edit()->DeleteFile(DELETION_PART,c->level(), f->number);
+    c->edit()->AddFile(INSERTION_PART, c->level(), f->number, f->file_size,
                        f->smallest, f->largest);
     status = versions_->LogAndApply(c->edit(), &mutex_);
-    //versions_->printCurVersion();
-    if(!config::isSM()&&c->level()>1&&c->level()<=config::dlsm_end_level){
-    	VersionEdit lazy_edit;
-    	if(c->level()+1 <= config::dlsm_end_level){
-    		int lazy_targetlevel = lazy_versions_->CompactionTargetLevel(c->level()+1);
-    		lazy_edit.AddFile(lazy_targetlevel,f->number,f->file_size,f->smallest,f->largest);
-    	}
-
-    	//TODO we will not keep the deletion part of the compaction buffer, therefore this part will not contain any data
-    	/*
-    	InternalKey smallest,largest;
-    	smallest = f->smallest;
-    	largest = f->largest;
-
-    	std::vector<FileMetaData *> needdelete;
-    	for(int i=lazy_versions_->PhysicalStartLevel(c->level());i<=lazy_versions_->PhysicalEndLevel(c->level());i++){
-
-    	     lazy_versions_->FilesCoveredInLevel(i,smallest,largest,&needdelete);
-    	     for(int j=0;j<needdelete.size();j++){
-    	        lazy_edit.DeleteFile(i,needdelete[j]->number);
-    	     }
-    	     needdelete.clear();
-    	}
-    	*/
-    	lazy_versions_->LogAndApply(&lazy_edit,&mutex_);
-    	//lazy_versions_->printCurVersion();
-    }
 
     if (!status.ok()) {
       RecordBackgroundError(status);
     }
-    VersionSet::LevelSummaryStorage tmp;
-    Log(options_.info_log, "Moved #%lld to level-%d %lld bytes %s: %s\n",
+    c->ReleaseInputs();
+  	DeleteObsoleteFiles();
+
+ /*   VersionSet::LevelSummaryStorage tmp;
+    Log(options_.info_log, "Moved #%lld to insertion part of level-%d %lld bytes %s\n",
         static_cast<unsigned long long>(f->number),
-        c->level() + 1,
+        c->level(),
         static_cast<unsigned long long>(f->file_size),
-        status.ToString().c_str(),
-        versions_->LevelSummary(&tmp));
-  } else if(!is_manual &&c->IsLevelNeedsMove()){
-	  //teng: Move entire level to next level, for two phase compaction
+        status.ToString().c_str());*/
+  } else if(c->IsLevelNeedsMove()){//batch merge
+	  //teng: level move step for batch merge
 	  	status = versions_->MoveLevelDown(c->level(), &mutex_);
-  		//versions_->printCurVersion();
-	  	if(status.ok()&&!config::isSM()){
-	  		status = lazy_versions_->ClearLevel(c->level(),&mutex_);
-	  		//lazy_versions_->printCurVersion();
-	  	}
 	  	if (!status.ok()) {
 	  		RecordBackgroundError(status);
 	  	}
-	  	VersionSet::LevelSummaryStorage tmp;
-	  	Log(options_.info_log, "Moved level-%d to level-%d %s: %s\n",
+	  	c->ReleaseInputs();
+/*	  	VersionSet::LevelSummaryStorage tmp;
+	  	Log(options_.info_log, "Moved level-%d to level-%d %s\n",
 	  		c->level(),	c->level() + 1,
-	  		status.ToString().c_str(),
-	  		versions_->LevelSummary(&tmp));
+	  		status.ToString().c_str());*/
 	  	DeleteObsoleteFiles();
-  }else {
+  }else {//internal rolling merge
     CompactionState* compact = new CompactionState(c);
     status = DoCompactionWork(compact);
     if (!status.ok()) {
@@ -841,19 +679,6 @@ void DBImpl::BackgroundCompaction() {
         "Compaction error: %s", status.ToString().c_str());
   }
 
-  if (is_manual) {
-    ManualCompaction* m = manual_compaction_;
-    if (!status.ok()) {
-      m->done = true;
-    }
-    if (!m->done) {
-      // We only compacted part of the requested range.  Update *m
-      // to the range that is left to be compacted.
-      m->tmp_storage = manual_end;
-      m->begin = &m->tmp_storage;
-    }
-    manual_compaction_ = NULL;
-  }
 }
 
 void DBImpl::CleanupCompaction(CompactionState* compact) {
@@ -895,7 +720,7 @@ Status DBImpl::OpenCompactionOutputFile(CompactionState* compact) {
   if (s.ok()) {
 	//teng: later will be used for pre-caching hot blocks after compaction
 	compact->outfile->setFilenumber(file_number);
-    compact->builder = new TableBuilder(options_, compact->outfile, runtime::pre_caching&&!config::isSM());
+    compact->builder = new TableBuilder(options_, compact->outfile, runtime::pre_caching);
   }
   return s;
 }
@@ -951,7 +776,7 @@ Status DBImpl::FinishCompactionOutputFile(CompactionState* compact,
   return s;
 }
 
-//teng: modified to support sm mode and dlsm mode
+//teng: only be called when perform internal rolling merge
 Status DBImpl::InstallCompactionResults(CompactionState* compact) {
   mutex_.AssertHeld();
   /*
@@ -963,68 +788,19 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
       static_cast<long long>(compact->total_bytes));*/
 
   const int level = compact->compaction->level();
-  assert(level<=config::LogicalLevelnum);
-  int startlevel = versions_->PhysicalStartLevel(level);
-  int levelsize = (config::isSM()?config::levels_per_logical_level:1);
-  int targetlevel = versions_->CompactionTargetLevel(level+1);
-  // Add compaction outputs
-  compact->compaction->AddInputDeletions(compact->compaction->edit(),startlevel,levelsize,targetlevel);
-  //teng: latter for secondary set
-
-
-  //printf("compact from logical level %d to logical level %d, actually to physical level %d\n",level, level+1,targetlevel);
+  assert(level<=config::kNumLevels);
+  int levelsize = 1;
+  //delete the input files from deletion part and insertion part
+  compact->compaction->AddInputDeletions(compact->compaction->edit(),level);
 
   for (size_t i = 0; i < compact->outputs.size(); i++) {
     const CompactionState::Output& out = compact->outputs[i];
-    compact->compaction->edit()->AddFile(
-    		targetlevel,
+    compact->compaction->edit()->AddFile(INSERTION_PART,
+    		level,
         out.number, out.file_size, out.smallest, out.largest);
     //printf("file %d is added to level %d\n",out.number,targetlevel);
   }
   Status s = versions_->LogAndApply(compact->compaction->edit(), &mutex_);
-  //versions_->printCurVersion();
-
-  //teng: dlsm
-  if(!config::isSM()&&level>1){
-	  int lazy_targetlevel = lazy_versions_->CompactionTargetLevel(level+1);
-	  Compaction *compaction = compact->compaction;
-	  VersionEdit lazy_edit;
-	  FileMetaData* file;
-	  std::vector<FileMetaData *> inputs;
-	  //append file from C(i) to D[i+1]
-      for(int i=0;i<compaction->num_input_files(0);i++){
-    	   file = compaction->input(0,i);
-    	   inputs.push_back(file);
-    	   //we set an end level for the compaction buffer to make it configurable. in our experiments, we set it to end at the last second level
-    	   if(level+1 <= config::dlsm_end_level)
-           lazy_edit.AddFile(lazy_targetlevel,file->number,file->file_size,file->smallest,file->largest);
-      }
-      //TODO we will not keep the deletion part of the compaction buffer, therefore this part will not contain any data
-
-      /*
-      //the input file of C(i) is read in order, therefore the smallest key of the input files is the smallest key of the first file, so does the largest key
-
-      InternalKey smallest,largest;
-      smallest = compaction->input(0,0)->smallest;
-      largest = compaction->input(0,compaction->num_input_files(0)-1)->largest;
-
-
-      //lazy_versions_->GetRange(inputs,&smallest,&largest);
-      if(level==6)
-      printf("%s %s\n",smallest.DebugString().c_str(),largest.DebugString().c_str());
-      //some of the files in C(i) is compacted down, such that the the files in D(i) which is the counterpart should also be deleted to maintain consistancy
-      std::vector<FileMetaData *> needdelete;
-      for(int i=lazy_versions_->PhysicalStartLevel(level);i<=lazy_versions_->PhysicalEndLevel(level);i++){
-
-          lazy_versions_->FilesCoveredInLevel(i,smallest,largest,&needdelete);
-          for(int j=0;j<needdelete.size();j++){
-        	 lazy_edit.DeleteFile(i,needdelete[j]->number);
-          }
-          needdelete.clear();
-      }*/
-      lazy_versions_->LogAndApply(&lazy_edit,&mutex_);
-      //lazy_versions_->printCurVersion();
-  }
   return s;
 }
 Status DBImpl::DoCompactionWork(CompactionState* compact) {
@@ -1057,9 +833,10 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
    * */
   size_t cached_block_number = 0;
   std::vector<std::vector<Slice*>> cachedRanges;
-  int levelsize = (config::isSM()?config::levels_per_logical_level+1:2);
+  int levelsize = 2;
+  bool needsCache = runtime::pre_caching&&options_.block_cache&&compact->compaction->level()!=0;
 
-  if(!config::isSM()&&runtime::pre_caching&&options_.block_cache)
+  if(needsCache)
   {
 	  Compaction *compactinfo = compact->compaction;
 	  Cache *block_cache = options_.block_cache;
@@ -1085,7 +862,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   std::string current_user_key;
   bool has_current_user_key = false;
   SequenceNumber last_sequence_for_key = kMaxSequenceNumber;
-  int tt = 0;
+
   for (; input->Valid() && !shutting_down_.Acquire_Load(); ) {
     // Prioritize immutable compaction work
     if (has_imm_.NoBarrier_Load() != NULL) {
@@ -1100,14 +877,13 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
     }
 
     Slice key = input->key();
-    if (compact->compaction->ShouldStopBefore(key) &&
-        compact->builder != NULL) {
+/*    if (compact->builder != NULL) {
       cached_block_number += compact->builder->cached_block_number;
       status = FinishCompactionOutputFile(compact, input);
       if (!status.ok()) {
         break;
       }
-    }
+    }*/
 
     // Handle key/value, add to state, etc.
     bool drop = false;
@@ -1131,7 +907,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
         drop = true;    // (A)
       } else if (ikey.type == kTypeDeletion &&
                  ikey.sequence <= compact->smallest_snapshot &&
-                 compact->compaction->IsBaseLevelForKey(ikey.user_key)) {
+                 compact->compaction->level()+1==config::kNumLevels) {//deletion key will be deleted in the last level(TODO modify it)
         // For this user key:
         // (1) there is no data in higher levels
         // (2) data in lower levels will have larger sequence numbers
@@ -1144,15 +920,6 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
 
       last_sequence_for_key = ikey.sequence;
     }
-#if 0
-    Log(options_.info_log,
-        "  Compact: %s, seq %d, type: %d %d, drop: %d, is_base: %d, "
-        "%d smallest_snapshot: %d",
-        ikey.user_key.ToString().c_str(),
-        (int)ikey.sequence, ikey.type, kTypeValue, drop,
-        compact->compaction->IsBaseLevelForKey(ikey.user_key),
-        (int)last_sequence_for_key, (int)compact->smallest_snapshot);
-#endif
 
     if (!drop) {
       // Open output file if necessary
@@ -1161,7 +928,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
         if (!status.ok()) {
           break;
         }
-        if(!config::isSM()){
+        if(needsCache){
             compact->builder->cachedRanges = &cachedRanges;
             compact->builder->rangeCursor[0] = 0;
             compact->builder->rangeCursor[1] = 0;
@@ -1205,7 +972,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
 
   CompactionStats stats;
   stats.micros = env_->NowMicros() - start_micros - imm_micros;
-  for (int which = 0; which < (config::isSM()?config::levels_per_logical_level+1:2); which++) {
+  for (int which = 0; which < 2; which++) {
     for (int i = 0; i < compact->compaction->num_input_files(which); i++) {
       stats.bytes_read += compact->compaction->input(which, i)->file_size;
     }
@@ -1223,11 +990,8 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   if (!status.ok()) {
     RecordBackgroundError(status);
   }
-  VersionSet::LevelSummaryStorage tmp;
-  Log(options_.info_log,
-      "compacted to: %s", versions_->LevelSummary(&tmp));
   //TODO change for pre-caching, disabled for SM mode
-  if(!config::isSM()&&runtime::pre_caching&&options_.block_cache){
+  if(needsCache){
 	 printf("pre-caching: %ld %ld %f\n",cachedRanges[0].size()+cachedRanges[1].size(),cached_block_number,options_.block_cache->Percent());
 	 for(int i=0;i<cachedRanges.size();i++)
 		 for(int j=0;j<cachedRanges[i].size();j++){
@@ -1292,19 +1056,6 @@ Iterator* DBImpl::NewInternalIterator(const ReadOptions& options,
   return internal_iter;
 }
 
-Iterator* DBImpl::TEST_NewInternalIterator() {
-  SequenceNumber ignored;
-  uint32_t ignored_seed;
-  return NewInternalIterator(ReadOptions(), &ignored, &ignored_seed);
-}
-
-int64_t DBImpl::TEST_MaxNextLevelOverlappingBytes() {
-  MutexLock l(&mutex_);
-  return versions_->MaxNextLevelOverlappingBytes();
-}
-
-
-
 static void deleteString(const Slice &key, void *value){
 	//printf("delete %s\n",key.ToString().c_str());
 	delete (std::string*)value;
@@ -1365,19 +1116,11 @@ Status DBImpl::Get(const ReadOptions& options,
   MemTable* mem = mem_;
   MemTable* imm = imm_;
   Version* current;
-  Version* current_lazy;
-  if(config::isdLSM()){
-	  current = versions_->current();
-	  current_lazy = lazy_versions_->current();
-	  current_lazy->Ref();
-  }else{
-	  current = versions_->current();
-  }
+  current = versions_->current();
   mem->Ref();
   if (imm != NULL) imm->Ref();
   current->Ref();
 
-  bool have_stat_update = false;
   Version::GetStats stats;
 
   // Unlock while reading from files and memtables
@@ -1389,44 +1132,15 @@ Status DBImpl::Get(const ReadOptions& options,
       // Done
     } else if (imm != NULL && imm->Get(lkey, value, &s)) {
       // Done
-    } else {
-      if(config::isdLSM()){//for dLSM
-
-    	  //the logical level 0 and 1 are not part of compaction buffer, check them first
-    	  s = current->Get(options,lkey,value,&stats,0,2);
-    	  //if not found in logical level 0 and level 1, go check the compaction buffer
-    	  if(s.IsNotFound())
-    	  {
-    		 //printf("%d,%d\n",lazy_versions_->PhysicalStartLevel(3),lazy_versions_->PhysicalEndLevel(config::dlsm_end_level));
-             s = current_lazy->Get(options, lkey, value, &stats ,lazy_versions_->PhysicalStartLevel(3), lazy_versions_->PhysicalEndLevel(3));
-    	  }
-    	  if(s.IsNotFound()){
-    	     s = current->Get(options,lkey,value,&stats,4,4);
-    	  }
-    	  if(s.IsNotFound()){
-             s = current_lazy->Get(options, lkey, value, &stats ,lazy_versions_->PhysicalStartLevel(5), lazy_versions_->PhysicalEndLevel(5));
-    	  }
-    	  //if not found, return to LSM-tree to read the rest levels
-    	  if(s.IsNotFound()){
-    		 s = current->Get(options,lkey,value,&stats,config::dlsm_end_level);
-    	  }
-      }else{//for LSM and SM
-    	  s = current->Get(options, lkey, value, &stats);
-      }
-      have_stat_update = true;
+    } else {//not find, check the data on disk
+      s = current->Get(options, lkey, value);
     }
     mutex_.Lock();
   }
 
-  if (have_stat_update && current->UpdateStats(stats)) {
-    MaybeScheduleCompaction();
-  }
   mem->Unref();
   if (imm != NULL) imm->Unref();
   current->Unref();
-  if(config::isdLSM()){
-	  current_lazy->Unref();
-  }
 
   //fill the KV-cache if exist
   if(options_.key_cache_&&value&&keyhandle==NULL){
@@ -1440,7 +1154,7 @@ Status DBImpl::Get(const ReadOptions& options,
   return s;
 }
 //do range query
-int DBImpl::GetRange(const ReadOptions& options,const Slice &start,const Slice &end)
+int DBImpl::RangeQuery(const ReadOptions& options,const Slice &start,const Slice &end)
 {
    int count = 0;
    Version::GetStats stats;
@@ -1453,9 +1167,9 @@ int DBImpl::GetRange(const ReadOptions& options,const Slice &start,const Slice &
    LookupKey lstart(start, snapshot);
    LookupKey lend(end, snapshot);
    Version* current = versions_->current();
-   //current->Ref();
-   count = current->GetRange(options, lstart, lend, &stats);
-   //current->Unref();
+   current->Ref();
+   count = current->RangeQuery(options, lstart, lend);
+   current->Unref();
    return count;
 }
 
@@ -1469,13 +1183,6 @@ Iterator* DBImpl::NewIterator(const ReadOptions& options) {
        ? reinterpret_cast<const SnapshotImpl*>(options.snapshot)->number_
        : latest_snapshot),
       seed);
-}
-
-void DBImpl::RecordReadSample(Slice key) {
-  MutexLock l(&mutex_);
-  if (versions_->current()->RecordReadSample(key)) {
-    MaybeScheduleCompaction();
-  }
 }
 
 const Snapshot* DBImpl::GetSnapshot() {
@@ -1627,13 +1334,14 @@ Status DBImpl::MakeRoomForWrite(bool force) {
   bool allow_delay = !force;
   Status s;
   while (true) {
+	double score = (double)versions_->TotalPartSize(0,DELETION_PART)/config::kL0_CompactionTrigger;
     if (!bg_error_.ok()) {
       // Yield previous error
       s = bg_error_;
       break;
     } else if (
         allow_delay &&
-        versions_->NumLevelFiles(0) >= config::kL0_SlowdownWritesTrigger) {
+		 score >= config::kL0_SlowdownWritesTrigger) {
       // We are getting close to hitting a hard limit on the number of
       // L0 files.  Rather than delaying a single write by several
       // seconds when we hit the hard limit, start delaying each
@@ -1653,7 +1361,7 @@ Status DBImpl::MakeRoomForWrite(bool force) {
       // one is still being compacted, so we wait.
       Log(options_.info_log, "Current memtable full; waiting...\n");
       bg_cv_.Wait();
-    } else if (versions_->NumLevelFiles(0) >= config::kL0_StopWritesTrigger) {
+    } else if (score >= config::kL0_StopWritesTrigger) {
       // There are too many level-0 files.
       Log(options_.info_log, "Too many L0 files; waiting...\n");
       bg_cv_.Wait();
@@ -1688,85 +1396,6 @@ Status DBImpl::MakeRoomForWrite(bool force) {
   return s;
 }
 
-bool DBImpl::GetProperty(const Slice& property, std::string* value) {
-  value->clear();
-
-  MutexLock l(&mutex_);
-  Slice in = property;
-  Slice prefix("leveldb.");
-  if (!in.starts_with(prefix)) return false;
-  in.remove_prefix(prefix.size());
-
-  if (in.starts_with("num-files-at-level")) {
-    in.remove_prefix(strlen("num-files-at-level"));
-    uint64_t level;
-    bool ok = ConsumeDecimalNumber(&in, &level) && in.empty();
-    if (!ok || level >= config::kNumLevels) {
-      return false;
-    } else {
-      char buf[100];
-      snprintf(buf, sizeof(buf), "%d",
-               versions_->NumLevelFiles(static_cast<int>(level)));
-      *value = buf;
-      return true;
-    }
-  } else if (in == "stats") {
-    char buf[200];
-    snprintf(buf, sizeof(buf),
-             "                               Compactions\n"
-             "Level  Files Size(MB) Time(sec) Read(MB) Write(MB)\n"
-             "--------------------------------------------------\n"
-             );
-    value->append(buf);
-    for (int level = 0; level < config::kNumLevels; level++) {
-      int files = versions_->NumLevelFiles(level);
-      if (stats_[level].micros > 0 || files > 0) {
-        snprintf(
-            buf, sizeof(buf),
-            "%3d %8d %8.0f %9.0f %8.0f %9.0f\n",
-            level,
-            files,
-            versions_->NumLevelBytes(level) / 1048576.0,
-            stats_[level].micros / 1e6,
-            stats_[level].bytes_read / 1048576.0,
-            stats_[level].bytes_written / 1048576.0);
-        value->append(buf);
-      }
-    }
-    return true;
-  } else if (in == "sstables") {
-    *value = versions_->current()->DebugString();
-    return true;
-  }
-
-  return false;
-}
-
-void DBImpl::GetApproximateSizes(
-    const Range* range, int n,
-    uint64_t* sizes) {
-  // TODO(opt): better implementation
-  Version* v;
-  {
-    MutexLock l(&mutex_);
-    versions_->current()->Ref();
-    v = versions_->current();
-  }
-
-  for (int i = 0; i < n; i++) {
-    // Convert user_key into a corresponding internal key.
-    InternalKey k1(range[i].start, kMaxSequenceNumber, kValueTypeForSeek);
-    InternalKey k2(range[i].limit, kMaxSequenceNumber, kValueTypeForSeek);
-    uint64_t start = versions_->ApproximateOffsetOf(v, k1);
-    uint64_t limit = versions_->ApproximateOffsetOf(v, k2);
-    sizes[i] = (limit >= start ? limit - start : 0);
-  }
-
-  {
-    MutexLock l(&mutex_);
-    v->Unref();
-  }
-}
 
 // Default implementations of convenience methods that subclasses of DB
 // can call if they wish

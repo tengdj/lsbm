@@ -85,7 +85,7 @@ class DB {
 
   virtual void UpdateKeyCache(const Slice &key, const Slice &value) = 0;
   //teng: get range
-  virtual int GetRange(const ReadOptions& options,
+  virtual int RangeQuery(const ReadOptions& options,
                          const Slice& startkey, const Slice &endkey) = 0;
 
 
@@ -113,38 +113,6 @@ class DB {
   // true.  Otherwise returns false.
   //
   //
-  // Valid property names include:
-  //
-  //  "leveldb.num-files-at-level<N>" - return the number of files at level <N>,
-  //     where <N> is an ASCII representation of a level number (e.g. "0").
-  //  "leveldb.stats" - returns a multi-line string that describes statistics
-  //     about the internal operation of the DB.
-  //  "leveldb.sstables" - returns a multi-line string that describes all
-  //     of the sstables that make up the db contents.
-  virtual bool GetProperty(const Slice& property, std::string* value) = 0;
-
-  // For each i in [0,n-1], store in "sizes[i]", the approximate
-  // file system space used by keys in "[range[i].start .. range[i].limit)".
-  //
-  // Note that the returned sizes measure file system space usage, so
-  // if the user data compresses by a factor of ten, the returned
-  // sizes will be one-tenth the size of the corresponding user data size.
-  //
-  // The results may not include the sizes of recently written data.
-  virtual void GetApproximateSizes(const Range* range, int n,
-                                   uint64_t* sizes) = 0;
-
-  // Compact the underlying storage for the key range [*begin,*end].
-  // In particular, deleted and overwritten versions are discarded,
-  // and the data is rearranged to reduce the cost of operations
-  // needed to access the data.  This operation should typically only
-  // be invoked by users who understand the underlying implementation.
-  //
-  // begin==NULL is treated as a key before all keys in the database.
-  // end==NULL is treated as a key after all keys in the database.
-  // Therefore the following call will compact the entire database:
-  //    db->CompactRange(NULL, NULL);
-  virtual void CompactRange(const Slice* begin, const Slice* end) = 0;
 
  private:
   // No copying allowed

@@ -3,8 +3,6 @@
 #include <unistd.h>
 /************************** Constants *****************************/
 #define BLKSIZE 4096
-#define HLSM_LOGICAL_LEVEL_NUM leveldb::config::kNumLevels/2
-
 /************************** Configuration *****************************/
 
 namespace leveldb {
@@ -12,9 +10,19 @@ namespace leveldb {
 namespace config {
 
 
+// Level-0 compaction is started when we hit this many files.
+static const int kL0_CompactionTrigger = 50;
+
+// Soft limit on number of level-0 files.  We slow down writes at this point.
+static const double kL0_SlowdownWritesTrigger = 1.1;
+
+// Maximum number of level-0 files.  We stop writes at this point.
+static const double kL0_StopWritesTrigger = 1.2;
+
+// Approximate gap in bytes between samples of data read during iteration.
+static const int kReadBytesPeriod = 1048576;
+
 extern const char *db_path;
-//0 for LSM mode, 1 for dlsm mode, 2 for sm mode
-extern int dbmode;
 
 //teng: target file size, default 2 MB
 extern int kTargetFileSize;
@@ -28,26 +36,17 @@ extern bool run_compaction;
 //teng: bloom filter in use
 extern int bloom_bits_use;
 
-extern int dlsm_end_level;
 
 extern int key_cache_size;
 
-//make enough room for two phase compaction
-const static int LogicalLevelnum = 3*2+1+1;
-const static int levels_per_logical_level = 25;
-//level 0 + other levels with two phase
-const static int kNumLevels = LogicalLevelnum*levels_per_logical_level+1;
+
+//we set it
+const static int kNumLevels = 4;
+const static int size_ratio = 10;
 
 
-inline bool isSM(){
-   return dbmode==2;
-}
-inline bool isLSM(){
-	return dbmode==0;
-}
-inline bool isdLSM(){
-	return dbmode==1;
-}
+extern int compaction_buffer_length[];
+extern int compaction_buffer_use_length[];
 
 /*
  * Bloom Filter
@@ -67,7 +66,6 @@ namespace runtime {
 
 extern double compaction_min_score;
 
-extern bool two_phase_compaction;
 //0 not started, 1 warmup started, 2 warmup done
 extern int warm_up_status;
 extern bool need_warm_up;
@@ -85,17 +83,16 @@ inline bool needWarmUp(){
 }
 
 extern bool print_version_info;
-extern bool print_lazy_version_info;
+extern bool print_compaction_buffer;
+extern bool print_dash;
 extern int hitratio_interval;
-
 extern int max_print_level;
-extern int level0_max_score;
 
 extern bool pre_caching;
 
 } // runtime
 
-} // hlsm
+} // leveldb
 
 
 #endif

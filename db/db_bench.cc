@@ -28,6 +28,7 @@
 
 
 using namespace std;
+using namespace leveldb;
 // Comma-separated list of operations to run in the specified order
 //   Actual benchmarks:
 //      fillseq       -- write N values in sequential key order in async mode
@@ -95,8 +96,8 @@ static int FLAGS_open_files = 64000;
 
 // Bloom filter bits per key.
 // Negative means use default settings.
-//teng: defualt 15
-static int FLAGS_bloom_bits = 15;
+//teng: defualt 20
+static int FLAGS_bloom_bits = 20;
 
 // If true, do not destroy the existing database.  If you set this
 // flag and also specify a benchmark that wants a fresh database, that
@@ -182,7 +183,6 @@ static int FLAGS_throughput = 0;
 
 static int readwrite_complete = 0;
 static double FLAGS_zipfian_constant = 0.99;
-static bool FLAGS_hash_key = true;
 
 static int rw_interval = 1;
 static int last_rw = 0;
@@ -767,6 +767,7 @@ class Benchmark {
     for (int i = 1; i < n; i++) {
       arg[0].thread->stats.Merge(arg[i].thread->stats);
     }
+    if(write_thread+random_read_thread+threads)
     arg[0].thread->stats.Report(name);
 
     for (int i = 0; i < n; i++) {
@@ -852,7 +853,6 @@ void Random_Read(ThreadState* thread) {
 	if(startwarmup){
 		//align k
 		int k = (FLAGS_read_from/hot_ratio)*hot_ratio;
-		long long hashkey;
 		//int cachesize = cache_->;
 		const int upto = FLAGS_read_upto;
 		while(true){
@@ -861,8 +861,7 @@ void Random_Read(ThreadState* thread) {
 		    }
 
 		    k += hot_ratio;
-		    hashkey=FLAGS_hash_key?generator::YCSBKey_hash(k):k;
-		    snprintf(key, sizeof(key), "user%019lld",hashkey);
+		    snprintf(key, sizeof(key), "user%019d",k);
 		    db_->Get(options,key,&value);
 		    double memused = 0,keyused = 0;
 		    fprintf(stderr,"%10d\%10d ",k,upto);
@@ -893,7 +892,6 @@ void Random_Read(ThreadState* thread) {
 	time(&begin);
 
     int k=0;
-    long long hashkey;
     time_t start_intv = 0, now_intv = 0;
     gettimeofday(&start,NULL);
     while(true)
@@ -913,10 +911,9 @@ void Random_Read(ThreadState* thread) {
        if(random()*100>FLAGS_noise_percent){
            k = (mygenerator->nextInt()/hot_ratio)*hot_ratio;
        }else{
-           k = (noisegenerator->nextInt()/hot_ratio)*hot_ratio;
+           k = noisegenerator->nextInt();
        }
-	   hashkey=FLAGS_hash_key?generator::YCSBKey_hash(k):k;
-       snprintf(key, sizeof(key), "user%019lld",hashkey);
+       snprintf(key, sizeof(key), "user%019d",k);
        s = db_->Get(options, key, &value);
        isFound = s.ok();
        done++;
@@ -990,7 +987,7 @@ int sequentialread(const ReadOptions options, int range)
       std::string endstr(endch);
       Slice start(startstr);
       Slice end(endstr);
-      return db_->GetRange(options,start,end);
+      return db_->RangeQuery(options,start,end);
 }
 
 void Range_Read(ThreadState* thread) {
@@ -1085,8 +1082,7 @@ void Range_Read(ThreadState* thread) {
 	}
     time(&begin);
 
-	uint64_t k;
-	long long hashkey;
+	int k;
 	time_t start_intv = 0, now_intv = 0;
 	gettimeofday(&start,NULL);
 	int last_write = 0;
@@ -1111,19 +1107,12 @@ void Range_Read(ThreadState* thread) {
     	      thread->stats.AddBytes(bytes);
     	      bytes = 0;
     	  }
-    	  if (difftime(now, begin) > FLAGS_countdown-1){
-	            break;
-    	  }
-    	  else{
-               fprintf(stderr,"I have finished %d write and now I need to sleep for %d seconds\n",writes_, (int)(FLAGS_countdown-difftime(now,begin)));
-               Env::Default()->SleepForMicroseconds((FLAGS_countdown-difftime(now,begin))*1000000);
-               break;
-    	  }
+    	  break;
+
       }
 
       k = mygenerator->nextInt();
-	  hashkey=FLAGS_hash_key?generator::YCSBKey_hash(k):k;
-      snprintf(key, sizeof(key), "user%019lld", hashkey);
+      snprintf(key, sizeof(key), "user%019d", k);
       Slice keyslice(key);
       Slice valueslice = gen.Generate(value_size_);
       bytes += value_size_ + strlen(key);
@@ -1172,12 +1161,15 @@ void Range_Read(ThreadState* thread) {
 
   void ReadWrite(ThreadState* thread) {
 
+	  if(FLAGS_throughput==0){
+		  return;
+	  }
    ReadOptions options;
    RandomGenerator gen;
    WriteBatch batch;
    std::string value;
    Status s;
-   bool isFound;
+
    time_t begin, now;
    struct timeval start, end;
    int64_t latency = 0;
@@ -1188,11 +1180,12 @@ void Range_Read(ThreadState* thread) {
    char key[100];
 
   	generator::IntegerGenerator *readgenerator,*writegenerator;
+	generator::IntegerGenerator *noisegenerator = new generator::UniformIntegerGenerator(FLAGS_key_from,FLAGS_key_upto);
+
   	if(FLAGS_read_ycsb_workload==NULL){
   		readgenerator = new generator::CounterGenerator(FLAGS_read_from,FLAGS_read_upto);
   	}
   	else if(strcmp(FLAGS_read_ycsb_workload,"zipfian")==0){
-  		printf("workload is zipfian\n");
   		readgenerator = new generator::ZipfianGenerator(FLAGS_read_from,(long int)FLAGS_read_upto,FLAGS_zipfian_constant);
   	}
   	else if(strcmp(FLAGS_read_ycsb_workload,"latest")==0){
@@ -1205,6 +1198,7 @@ void Range_Read(ThreadState* thread) {
   	else {
   		readgenerator = new generator::CounterGenerator(FLAGS_read_from,FLAGS_read_upto);
   	}
+
   	if(FLAGS_write_ycsb_workload==NULL){
   			writegenerator = new generator::CounterGenerator(FLAGS_write_from,FLAGS_write_upto);
   	}
@@ -1221,43 +1215,52 @@ void Range_Read(ThreadState* thread) {
   	else{
   		writegenerator = new generator::CounterGenerator(FLAGS_write_from,FLAGS_write_upto);
   	}
-  	if(FLAGS_throughput==0)
-  	{
-  		  Env::Default()->SleepForMicroseconds(FLAGS_countdown*1000000);
-  		  return;
-  	}
+
   	if(cache_==NULL&&key_cache_==NULL){
   		leveldb::runtime::need_warm_up = false;
   	}
   	bool startwarmup = false;
   	if(runtime::needWarmUp()){
-  	  leveldb::runtime::warm_up_status = 1;
-  	  int k = (FLAGS_read_from/hot_ratio)*hot_ratio;
-  	  long long hashkey;
-  	  int kk = k;
-  	  uint64_t cachesize = FLAGS_block_cache_size-cache_->Used();
-  	  while(true){
-  		//||FLAGS_num==0||;
-  		if(((double)cache_->Used()/cachesize)>0.9||kk>=FLAGS_read_upto){
-  		  break;
+  		random_read_mu_.Lock();
+  		startwarmup = runtime::notStartWarmUp();
+  		if(startwarmup){
+  			runtime::warm_up_status = 1;
   		}
-	    hashkey=FLAGS_hash_key?generator::YCSBKey_hash(k):k;
-  		snprintf(key, sizeof(key), "user%019lld", hashkey);
-  		kk += hot_ratio;
-  		k = readgenerator->nextInt();
-  		db_->Get(options,key,&value);
-  		//fprintf(stdout,"%10d\%10d current used cache is %f\n",k,upto,100.0*((double)cache_->Used()/cachesize));
-  		fprintf(stderr,"%d/%ld current used cache is %f%%\n",kk,FLAGS_read_upto, 100.0*((double)cache_->Used()/cachesize));
+  		random_read_mu_.Unlock();
+  		if(startwarmup){
+  			//align k
+  			int k = (FLAGS_read_from/hot_ratio)*hot_ratio;
+  			const int upto = FLAGS_read_upto;
+  			while(true){
+  			    if(k>=FLAGS_read_upto||random_reads_==0){
+  			      break;
+  			    }
 
-      }
-  	  leveldb::runtime::warm_up_status = 2;
+  			    k += hot_ratio;
+  			    snprintf(key, sizeof(key), "user%019d",k);
+  			    db_->Get(options,key,&value);
+  			    double memused = 0,keyused = 0;
+  			    fprintf(stderr,"%10d\%10d ",k,upto);
+  			    if(cache_){
+  			    	memused = 100.0*(cache_->Percent());
+  			    	fprintf(stderr,"block cache usage %f",memused);
+  			    }
+  			    if(key_cache_){
+  			    	keyused = 100.0*(key_cache_->Percent());
+  			    	fprintf(stderr,"key cache usage %f",keyused);
+  			    }
+  		    	fprintf(stderr,"\n");
+  		   }
+  		   runtime::warm_up_status = 2;
+  		}
+  		else{
+  			WaitForWarmUp(1);
+  		}
   	}
-  	  time(&begin);
+  	time(&begin);
 
       int k=0;
-      long long hashkey;
       gettimeofday(&start,NULL);
-      bool isread = true;
       time_t start_intv = 0, now_intv = 0;
 
       while(true)
@@ -1270,23 +1273,23 @@ void Range_Read(ThreadState* thread) {
   	    if (difftime(now, begin) > FLAGS_countdown || (readwrite_complete>=FLAGS_num&&FLAGS_num>=0)){
       		break;
   	    }
-        isread = random()*100<=FLAGS_read_portion?true:false;
-        if(isread){//read
-         k = (readgenerator->nextInt()/hot_ratio)*hot_ratio;
-		 hashkey=FLAGS_hash_key?generator::YCSBKey_hash(k):k;
-         snprintf(key, sizeof(key), "user%019lld", hashkey);
+        if(random()*100<=FLAGS_read_portion){//read
+         if(random()*100>FLAGS_noise_percent){
+              k = (readgenerator->nextInt()/hot_ratio)*hot_ratio;
+         }else{
+              k = noisegenerator->nextInt();
+         }
+         snprintf(key, sizeof(key), "user%019d", k);
          s = db_->Get(options, key, &value);
-         isFound = s.ok();
          readdone++;
-         if (isFound) {
+         if (s.ok()) {
            found++;
          }
          thread->stats.FinishedReadOp();
         }
         else{//write
     	   k = writegenerator->nextInt();
-		   hashkey=FLAGS_hash_key?generator::YCSBKey_hash(k):k;
-    	   snprintf(key, sizeof(key), "user%019lld", hashkey);
+    	   snprintf(key, sizeof(key), "user%019d", k);
     	   batch.Put(key, gen.Generate(value_size_));
            writedone ++;
            s = db_->Write(write_options_, &batch);
@@ -1301,14 +1304,14 @@ void Range_Read(ThreadState* thread) {
        readwrite_complete++;
  	   time(&now_intv);
  	   if(difftime(now_intv,start_intv)>=rw_interval){
- 	     printf("rwop: finishd %d ops in %d sec, cache size: %ld timepassed: %d\n",readwrite_complete-last_rw,rw_interval,cache_->Used(),(int)difftime(now_intv,begin));
+ 	     printf("rwop: finishd %d ops in %d sec, timepassed: %d\n",readwrite_complete-last_rw,rw_interval,(int)difftime(now_intv,begin));
  	     last_rw = readwrite_complete;
  	     time(&start_intv);
  	   }
-       if(readwrite_complete%latency_gap==0){
+       if(FLAGS_throughput>0&&readwrite_complete%latency_gap==0){
             gettimeofday(&end,NULL);
             latency = (end.tv_sec-start.tv_sec)*1000000+(end.tv_usec-start.tv_usec);
-            if(FLAGS_throughput>0&&latency_gap*readwrite_latency>latency)
+            if(latency_gap*readwrite_latency>latency)
          	{
          	  Env::Default()->SleepForMicroseconds(readwrite_latency*latency_gap-latency);
          	}
@@ -1344,12 +1347,16 @@ void Range_Read(ThreadState* thread) {
 
 }  // namespace leveldb
 
+
 int main(int argc, char** argv) {
+
+
   //FLAGS_write_buffer_size = leveldb::Options().write_buffer_size;
   //FLAGS_open_files = leveldb::Options().max_open_files;
   for (int i = 1; i < argc; i++) {
     double d;
     int n;
+    int n2;
     long long ll;
     int64_t n64;
     char junk;
@@ -1375,9 +1382,8 @@ int main(int argc, char** argv) {
       FLAGS_write_buffer_size = n;
     } else if (sscanf(argv[i], "--block_cache_size=%d%c", &n, &junk) == 1) {
       FLAGS_block_cache_size = (uint64_t)n*1024*1024;
-      printf("%ld\n",FLAGS_block_cache_size);
     } else if (sscanf(argv[i], "--key_cache_size=%d%c", &n, &junk) == 1) {
-      FLAGS_key_cache_size = n*1024*1024;
+      FLAGS_key_cache_size = (uint64_t)n*1024*1024;
       leveldb::config::key_cache_size = FLAGS_key_cache_size;
     } else if (sscanf(argv[i], "--bloom_bits=%d%c", &n, &junk) == 1) {
       FLAGS_bloom_bits = n;
@@ -1414,10 +1420,10 @@ int main(int argc, char** argv) {
       leveldb::runtime::pre_caching = n;
     } else if (sscanf(argv[i], "--print_version_info=%d%c", &n, &junk) == 1) {
       leveldb::runtime::print_version_info = n;
-    } else if (sscanf(argv[i], "--print_lazy_version_info=%d%c", &n, &junk) == 1) {
-          leveldb::runtime::print_lazy_version_info = n;
-    } else if (sscanf(argv[i], "--two_phase_compaction=%d%c", &n, &junk) == 1) {
-        leveldb::runtime::two_phase_compaction = n;
+    } else if (sscanf(argv[i], "--print_compaction_buffer=%d%c", &n, &junk) == 1) {
+          leveldb::runtime::print_compaction_buffer = n;
+    } else if (sscanf(argv[i], "--print_dash=%d%c", &n, &junk) == 1) {
+        leveldb::runtime::print_dash = n;
     } else if (sscanf(argv[i], "--warmup=%d%c", &n, &junk) == 1) {
         leveldb::runtime::need_warm_up = n;
         if(leveldb::runtime::needWarmUp()){
@@ -1463,35 +1469,23 @@ int main(int argc, char** argv) {
     	rw_interval = n;
     }  else if (sscanf(argv[i], "--zipfian_constant=%lf%c", &d, &junk) == 1) {
         FLAGS_zipfian_constant = d;
-    }  else if (sscanf(argv[i], "--hash_key=%d%c", &n, &junk) == 1) {
-        FLAGS_hash_key = n;
     }  else if (sscanf(argv[i], "--max_print_level=%d%c", &n, &junk) == 1) {
         leveldb::runtime::max_print_level = n;
-    }  else if (sscanf(argv[i], "--dlsm_end_level=%d%c", &n, &junk) == 1) {
-        leveldb::config::dlsm_end_level = n;
-    }   else if (sscanf(argv[i], "--level0_max_score=%lf%c", &d, &junk) == 1) {
-    	if(d>1){
-    		leveldb::runtime::level0_max_score = d;
-        }
-
-    }   else if (sscanf(argv[i], "--compaction_min_score=%lf%c", &d, &junk) == 1) {
+    }  /*else if (sscanf(argv[i], "--compaction_buffer_length=%d%c", &n, &junk) == 1) {
+        leveldb::config::compaction_buffer_length = n;
+    } */ else if (sscanf(argv[i], "--compaction_buffer_use_length=%d%c", &n, &junk) == 1) {
+        leveldb::config::compaction_buffer_use_length[n%10] = n/10;
+    }  else if (sscanf(argv[i], "--compaction_min_score=%lf%c", &d, &junk) == 1) {
     	if(d<1){
     		leveldb::runtime::compaction_min_score = d;
         }
 
-    } else if (sscanf(argv[i], "--dbmode=%d%c", &n, &junk) == 1) {
-        leveldb::config::dbmode = n;
-        if(n!=0&&n!=1&&n!=2){
-        	fprintf(stderr,"error dbmode, can only be 0(LSM) or 1(dLSM) 2(SM)\n");
-        	exit(0);
-        }
     } else {
+    	printf("%s\n",argv[i]);
       fprintf(stderr, "Invalid flag '%s'\n", argv[i]);
       exit(1);
     }
   }
-  //true for all
-  leveldb::runtime::two_phase_compaction = true;
 
   FLAGS_read_span = FLAGS_read_upto - FLAGS_read_from;
   FLAGS_write_span = FLAGS_write_upto - FLAGS_write_from;

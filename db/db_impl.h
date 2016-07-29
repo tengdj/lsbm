@@ -37,37 +37,12 @@ class DBImpl : public DB {
                      const Slice& key,
                      std::string* value);
   virtual void UpdateKeyCache(const Slice& key, const Slice &value);
-  virtual int GetRange(const ReadOptions& options,
+  virtual int RangeQuery(const ReadOptions& options,
                          const Slice& startkey, const Slice &endkey);
 
   virtual Iterator* NewIterator(const ReadOptions&);
   virtual const Snapshot* GetSnapshot();
   virtual void ReleaseSnapshot(const Snapshot* snapshot);
-  virtual bool GetProperty(const Slice& property, std::string* value);
-  virtual void GetApproximateSizes(const Range* range, int n, uint64_t* sizes);
-  virtual void CompactRange(const Slice* begin, const Slice* end);
-
-  // Extra methods (for testing) that are not in the public DB interface
-
-  // Compact any files in the named level that overlap [*begin,*end]
-  void TEST_CompactRange(int level, const Slice* begin, const Slice* end);
-
-  // Force current memtable contents to be compacted.
-  Status TEST_CompactMemTable();
-
-  // Return an internal iterator over the current state of the database.
-  // The keys of this iterator are internal keys (see format.h).
-  // The returned iterator should be deleted when no longer needed.
-  Iterator* TEST_NewInternalIterator();
-
-  // Return the maximum overlapping data (in bytes) at next level for any
-  // file at a level >= 1.
-  int64_t TEST_MaxNextLevelOverlappingBytes();
-
-  // Record a sample of bytes read at the specified internal key.
-  // Samples are taken approximately once every config::kReadBytesPeriod
-  // bytes.
-  void RecordReadSample(Slice key);
 
  private:
   friend class DB;
@@ -164,19 +139,8 @@ class DBImpl : public DB {
   // Has a background compaction been scheduled or is running?
   bool bg_compaction_scheduled_;
 
-  // Information for a manual compaction
-  struct ManualCompaction {
-    int level;
-    bool done;
-    const InternalKey* begin;   // NULL means beginning of key range
-    const InternalKey* end;     // NULL means end of key range
-    InternalKey tmp_storage;    // Used to keep track of compaction progress
-  };
-  ManualCompaction* manual_compaction_;
 
   VersionSet* versions_;
-  //teng: for dual lsm tree, the lazy delete set
-  VersionSet* lazy_versions_;
 
   // Have we encountered a background error in paranoid mode?
   Status bg_error_;

@@ -20,8 +20,7 @@ enum Tag {
   kDeletedFile          = 6,
   kNewFile              = 7,
   // 8 was used for large value refs
-  kPrevLogNumber        = 9,
-  kTargetPLevel			=10
+  kPrevLogNumber        = 9
 };
 
 void VersionEdit::Clear() {
@@ -35,9 +34,14 @@ void VersionEdit::Clear() {
   has_prev_log_number_ = false;
   has_next_file_number_ = false;
   has_last_sequence_ = false;
-  has_target_plevel_ = false;
-  deleted_files_.clear();
-  new_files_.clear();
+  deleted_files_[0].clear();
+  deleted_files_[1].clear();
+  deleted_files_[2].clear();
+
+  new_files_[0].clear();
+  new_files_[1].clear();
+  new_files_[2].clear();
+
 }
 
 void VersionEdit::EncodeTo(std::string* dst) const {
@@ -62,36 +66,38 @@ void VersionEdit::EncodeTo(std::string* dst) const {
     PutVarint64(dst, last_sequence_);
   }
 
-  for (size_t i = 0; i < compact_pointers_.size(); i++) {
-    PutVarint32(dst, kCompactPointer);
-    PutVarint32(dst, compact_pointers_[i].first);  // level
-    PutLengthPrefixedSlice(dst, compact_pointers_[i].second.Encode());
+
+  //for deletion insertion and compaction buffer
+  for(int t=0;t<3;t++){
+
+	  for (DeletedFileSet::const_iterator iter = deleted_files_[t].begin();
+	         iter != deleted_files_[t].end();
+	         ++iter) {
+	      PutVarint32(dst, kDeletedFile);
+	      PutVarint32(dst, t);
+	      PutVarint32(dst, iter->first);   // level
+	      PutVarint64(dst, iter->second);  // file number
+	  }
+	  //printf("encode type: %d\n",t);
+
+	  for (int i = 0; i <new_files_[t].size() ; i++) {
+
+	      const FileMetaData& f = new_files_[t][i].second;
+	      PutVarint32(dst, kNewFile);
+	      PutVarint32(dst, t);
+	      PutVarint32(dst, new_files_[t][i].first);  // level
+	      PutVarint64(dst, f.number);
+	      PutVarint64(dst, f.file_size);
+	      PutLengthPrefixedSlice(dst, f.smallest.Encode());
+	      PutLengthPrefixedSlice(dst, f.largest.Encode());
+	      //printf("%d ",(int)f.number);
+	    }
+	  //printf("\n");
+
   }
 
 
 
-  for (DeletedFileSet::const_iterator iter = deleted_files_.begin();
-       iter != deleted_files_.end();
-       ++iter) {
-    PutVarint32(dst, kDeletedFile);
-    PutVarint32(dst, iter->first);   // level
-    PutVarint64(dst, iter->second);  // file number
-  }
-
-  for (size_t i = 0; i < new_files_.size(); i++) {
-    const FileMetaData& f = new_files_[i].second;
-    PutVarint32(dst, kNewFile);
-    PutVarint32(dst, new_files_[i].first);  // level
-    PutVarint64(dst, f.number);
-    PutVarint64(dst, f.file_size);
-    PutLengthPrefixedSlice(dst, f.smallest.Encode());
-    PutLengthPrefixedSlice(dst, f.largest.Encode());
-  }
-  for (size_t i = 0; i < targetPLevel.size(); i++) {
-      PutVarint32(dst, kTargetPLevel);
-      PutVarint32(dst, targetPLevel[i].first);  // level
-      PutVarint32(dst, targetPLevel[i].second);
-  }
 }
 
 static bool GetInternalKey(Slice* input, InternalKey* dst) {
@@ -114,7 +120,7 @@ static bool GetLevel(Slice* input, int* level) {
     return false;
   }
 }
-
+//TODO teng, for compaction buffer, when overlap find, create a new sorted table
 Status VersionEdit::DecodeFrom(const Slice& src) {
   Clear();
   Slice input = src;
@@ -122,6 +128,7 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
   uint32_t tag;
 
   // Temporary storage for parsing
+  uint type;
   int level;
   uint32_t number32;
   uint64_t number;
@@ -171,39 +178,27 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
           msg = "last sequence number";
         }
         break;
-
-      case kCompactPointer:
-        if (GetLevel(&input, &level) &&
-            GetInternalKey(&input, &key)) {
-          compact_pointers_.push_back(std::make_pair(level, key));
-        } else {
-          msg = "compaction pointer";
-        }
-        break;
-       case kTargetPLevel:
-         if (GetLevel(&input, &level)&&GetVarint32(&input, &number32)) {
-          targetPLevel.push_back(std::make_pair(level, number32));
-          has_target_plevel_=true;
-        } else {
-          msg = "target physical level";
-        }
-        break;
       case kDeletedFile:
-        if (GetLevel(&input, &level) &&
+        if (
+        	GetVarint32(&input,&type)&&
+        	GetLevel(&input, &level) &&
             GetVarint64(&input, &number)) {
-          deleted_files_.insert(std::make_pair(level, number));
+          deleted_files_[type].insert(std::make_pair(level, number));
         } else {
           msg = "deleted file";
         }
         break;
 
       case kNewFile:
-        if (GetLevel(&input, &level) &&
+        if (
+        	GetVarint32(&input,&type)&&
+        	GetLevel(&input, &level) &&
             GetVarint64(&input, &f.number) &&
             GetVarint64(&input, &f.file_size) &&
             GetInternalKey(&input, &f.smallest) &&
             GetInternalKey(&input, &f.largest)) {
-          new_files_.push_back(std::make_pair(level, f));
+          new_files_[type].push_back(std::make_pair(level, f));
+          //printf("decode|level: %d type: %d file: %d\n",level,type,(int)f.number);
         } else {
           msg = "new-file entry";
         }
@@ -226,65 +221,19 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
   return result;
 }
 
-std::string VersionEdit::DebugString() const {
-  std::string r;
-  r.append("VersionEdit {");
-  if (has_comparator_) {
-    r.append("\n  Comparator: ");
-    r.append(comparator_);
-  }
-  if (has_log_number_) {
-    r.append("\n  LogNumber: ");
-    AppendNumberTo(&r, log_number_);
-  }
-  if (has_prev_log_number_) {
-    r.append("\n  PrevLogNumber: ");
-    AppendNumberTo(&r, prev_log_number_);
-  }
-  if (has_next_file_number_) {
-    r.append("\n  NextFile: ");
-    AppendNumberTo(&r, next_file_number_);
-  }
-  if (has_last_sequence_) {
-    r.append("\n  LastSeq: ");
-    AppendNumberTo(&r, last_sequence_);
-  }
-  for (size_t i = 0; i < compact_pointers_.size(); i++) {
-    r.append("\n  CompactPointer: ");
-    AppendNumberTo(&r, compact_pointers_[i].first);
-    r.append(" ");
-    r.append(compact_pointers_[i].second.DebugString());
-  }
 
-  for (size_t i = 0; i < targetPLevel.size(); i++) {
-      r.append("\n  targetPLevel: ");
-      AppendNumberTo(&r, targetPLevel[i].first);
-      r.append(" ");
-      AppendNumberTo(&r, targetPLevel[i].second);
-  }
-  for (DeletedFileSet::const_iterator iter = deleted_files_.begin();
-       iter != deleted_files_.end();
-       ++iter) {
-    r.append("\n  DeleteFile: ");
-    AppendNumberTo(&r, iter->first);
-    r.append(" ");
-    AppendNumberTo(&r, iter->second);
-  }
-  for (size_t i = 0; i < new_files_.size(); i++) {
-    const FileMetaData& f = new_files_[i].second;
-    r.append("\n  AddFile: ");
-    AppendNumberTo(&r, new_files_[i].first);
-    r.append(" ");
-    AppendNumberTo(&r, f.number);
-    r.append(" ");
-    AppendNumberTo(&r, f.file_size);
-    r.append(" ");
-    r.append(f.smallest.DebugString());
-    r.append(" .. ");
-    r.append(f.largest.DebugString());
-  }
-  r.append("\n}\n");
-  return r;
+SortedTable *VersionEdit::CloneSortedTable(SortedTable *original){
+
+	if(original==NULL){
+		return NULL;
+	}
+
+	SortedTable *cloned = new SortedTable();
+	for(int i=0;i<original->files_.size();i++){
+		cloned->AddFile(original->files_[i]);
+	}
+
+	return cloned;
 }
 
 }  // namespace leveldb

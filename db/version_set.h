@@ -51,12 +51,6 @@ extern bool AfterFile(const Comparator* ucmp,
 extern bool BeforeFile(const Comparator* ucmp,
                        const Slice* user_key, const FileMetaData* f);
 
-extern bool SomeFileOverlapsRange(
-    const InternalKeyComparator& icmp,
-    bool disjoint_sorted_files,
-    const std::vector<FileMetaData*>& files,
-    const Slice* smallest_user_key,
-    const Slice* largest_user_key);
 
 class Compaction;
 class Iterator;
@@ -74,21 +68,49 @@ extern int FindFile(const InternalKeyComparator& icmp,
                     const std::vector<FileMetaData*>& files,
                     const Slice& key);
 
-// Returns true iff some file in "files" overlaps the user key range
-// [*smallest,*largest].
-// smallest==NULL represents a key smaller than all keys in the DB.
-// largest==NULL represents a key largest than all keys in the DB.
-// REQUIRES: If disjoint_sorted_files, files[] contains disjoint ranges
-//           in sorted order.
-extern bool SomeFileOverlapsRange(
-    const InternalKeyComparator& icmp,
-    bool disjoint_sorted_files,
-    const std::vector<FileMetaData*>& files,
-    const Slice* smallest_user_key,
-    const Slice* largest_user_key);
 
+
+class SortedTable{
+
+public:
+	SortedTable(){
+		next = NULL;
+		prev = NULL;
+	}
+	void AddFile(FileMetaData *file){
+		if(file!=NULL){
+			file->refs++;
+			files_.push_back(file);
+		}
+	}
+	SortedTable *next;
+	SortedTable *prev;
+	std::vector<FileMetaData*> files_;
+
+	//unref all files
+	~SortedTable(){
+		next = NULL;
+		prev = NULL;
+		for (size_t i = 0; i < files_.size(); i++) {
+		      FileMetaData* f = files_[i];
+		      assert(f->refs > 0);
+		      f->refs--;
+		      if (f->refs <= 0) {
+		        delete f;
+		      }
+		 }
+
+	}
+
+};
+
+enum CompactionType{
+	LEVEL_MOVE = 0,
+	INTERNAL_ROLLING_MERGE = 1
+};
 class Version {
  public:
+
   // Append to *iters a sequence of iterators that will
   // yield the contents of this Version when merged together.
   // REQUIRES: This version has been saved (see VersionSet::SaveTo)
@@ -101,59 +123,49 @@ class Version {
     FileMetaData* seek_file;
     int seek_file_level;
   };
-  Status Get(const ReadOptions&, const LookupKey& key, std::string* val,
-             GetStats* stats,const int startlevel=0, const int endlevel=config::kNumLevels-1);
+  Status Get(const ReadOptions&, const LookupKey& key, std::string* val);
 
-  //teng: get range
-  int GetRange(const ReadOptions& options,
+  //teng: range query
+  int RangeQuery(const ReadOptions& options,
                         const LookupKey &start,
-                        const LookupKey &end,
-                        GetStats* stats);
-
-  // Adds "stats" into the current state.  Returns true if a new
-  // compaction may need to be triggered, false otherwise.
-  // REQUIRES: lock is held
-  bool UpdateStats(const GetStats& stats);
-
-  // Record a sample of bytes read at the specified internal key.
-  // Samples are taken approximately once every config::kReadBytesPeriod
-  // bytes.  Returns true if a new compaction may need to be triggered.
-  // REQUIRES: lock is held
-  bool RecordReadSample(Slice key);
+                        const LookupKey &end);
 
   // Reference count management (so Versions do not disappear out from
   // under live iterators)
   void Ref();
   void Unref();
 
+  void NewSortedTable(int level, SortedTableType type);
   void GetOverlappingInputs(
+	  int type,
       int level,
       const InternalKey* begin,         // NULL means before all keys
       const InternalKey* end,           // NULL means after all keys
       std::vector<FileMetaData*>* inputs);
 
-  // Returns true iff some file in the specified level overlaps
-  // some part of [*smallest_user_key,*largest_user_key].
-  // smallest_user_key==NULL represents a key smaller than all keys in the DB.
-  // largest_user_key==NULL represents a key largest than all keys in the DB.
-  bool OverlapInLevel(int level,
-                      const Slice* smallest_user_key,
-                      const Slice* largest_user_key);
 
-  // Return the level at which we should place a new memtable compaction
-  // result that covers the range [smallest_user_key,largest_user_key].
-  int PickLevelForMemTableOutput(const Slice& smallest_user_key,
-                                 const Slice& largest_user_key);
+  int NumFiles(int level) const {
+	  return NumPartFiles(level,INSERTION_PART)+NumPartFiles(level,DELETION_PART);
+  }
 
-  int NumFiles(int level) const { return files_[level].size(); }
-
+  int NumPartFiles(int level, SortedTableType type) const{
+	SortedTable *head = levels_[level][type];
+	SortedTable *cur = head;
+	int filesize = 0;
+	do{
+		filesize += cur->files_.size();
+		cur = cur->next;
+	}while(cur!=head);
+	return filesize;
+  }
+  uint64_t TotalLevelSize(int level);
+  uint64_t TotalPartSize(int level, SortedTableType type);
   // Return a human readable string that describes this version's contents.
   std::string DebugString() const;
 
  private:
   friend class Compaction;
   friend class VersionSet;
-  friend class LazyVersionSet;
   friend class BasicVersionSet;
 
   // An internal iterator.  For a given version/level pair, yields
@@ -210,7 +222,7 @@ class Version {
     // Backing store for value().  Holds the file number and size.
     mutable char value_buf_[16];
   };
-  Iterator* NewConcatenatingIterator(const ReadOptions&, int level) const;
+  Iterator* NewConcatenatingIterator(const ReadOptions&, int type, int level) const;
 
   // Call func(arg, level, f) for every file that overlaps user_key in
   // order from newest to oldest.  If an invocation of func returns
@@ -228,27 +240,22 @@ class Version {
   int level_num_;
 
   // List of files per level
-  std::vector<FileMetaData*> files_[config::kNumLevels];
+  //std::vector<FileMetaData*> files_[config::kNumLevels];
 
-  // Next file to compact based on seek stats.
-  FileMetaData* file_to_compact_;
-  int file_to_compact_level_;
+  //three sorted table list, one for deletion part, one for insertion part, and one for compaction buffer
+  SortedTable* levels_[config::kNumLevels][3];
+
 
   // Level that should be compacted next and its compaction score.
   // Score < 1 means compaction is not strictly needed.  These fields
   // are initialized by Finalize().
   double compaction_score_;
   int compaction_level_;
+  CompactionType compaction_type_;
+
+  explicit Version(VersionSet* vset, int level=config::kNumLevels);
 
 
-  explicit Version(VersionSet* vset, int level = config::kNumLevels)
-      : vset_(vset), next_(this), prev_(this), refs_(0),
-        file_to_compact_(NULL),
-        level_num_(level),
-        file_to_compact_level_(-1),
-        compaction_score_(-1),
-        compaction_level_(-1) {
-  }
 
   ~Version();
 
@@ -266,8 +273,6 @@ class VersionSet {
              const InternalKeyComparator*
              );
   virtual ~VersionSet();
-
-  void FilesCoveredInLevel(int level, const InternalKey smallest, const InternalKey largest,std::vector<FileMetaData *>* results);
 
   // Apply *edit to the current version to form a new descriptor that
   // is both saved to persistent state and installed as the new
@@ -301,6 +306,7 @@ class VersionSet {
 
   // Return the number of Table files at the specified level.
   virtual int NumLevelFiles(int level)=0 ;
+  virtual int NumPartFiles(int level,SortedTableType part) = 0;
 
   // Return the combined file size of all files at the specified level.
   int64_t NumLevelBytes(int level) const;
@@ -315,7 +321,11 @@ class VersionSet {
   }
 
   // Mark the specified file number as used.
-  void MarkFileNumberUsed(uint64_t number);
+  void MarkFileNumberUsed(uint64_t number){
+	  if (next_file_number_ <= number) {
+	    next_file_number_ = number + 1;
+	  };
+  }
 
   // Return the current log file number.
   uint64_t LogNumber() const { return log_number_; }
@@ -330,18 +340,6 @@ class VersionSet {
   // describes the compaction.  Caller should delete the result.
   virtual Compaction* PickCompaction()=0;
 
-  // Return a compaction object for compacting the range [begin,end] in
-  // the specified level.  Returns NULL if there is nothing in that
-  // level that overlaps the specified range.  Caller should delete
-  // the result.
-  Compaction* CompactRange(
-      int level,
-      const InternalKey* begin,
-      const InternalKey* end);
-
-  // Return the maximum overlapping data (in bytes) at next level for any
-  // file at a level >= 1.
-  int64_t MaxNextLevelOverlappingBytes();
 
   // Create an iterator that reads over the compaction inputs for "*c".
   // The caller should delete the iterator when no longer needed.
@@ -350,37 +348,28 @@ class VersionSet {
   // Returns true iff some level needs a compaction.
   bool NeedsCompaction() const {
     Version* v = current_;
-    return (v->compaction_score_ > leveldb::runtime::compaction_min_score) || (v->file_to_compact_ != NULL);
+    return (v->compaction_score_ > leveldb::runtime::compaction_min_score);
   }
 
   // Add all files listed in any live version to *live.
   // May also mutate some internal state.
   void AddLiveFiles(std::set<uint64_t>* live);
 
-  // Return the approximate offset in the database of the data for
-  // "key" as of version "v".
-  uint64_t ApproximateOffsetOf(Version* v, const InternalKey& key);
 
   // Return a human-readable short (single-line) summary of the number
   // of files per level.  Uses *scratch as backing store.
   struct LevelSummaryStorage {
     char buffer[100];
   };
-  const char* LevelSummary(LevelSummaryStorage* scratch) const;
 
   //teng: for two phase compaction
   virtual Status MoveLevelDown(int level, leveldb::port::Mutex *mutex_)=0;
   virtual Status ClearLevel(int level, leveldb::port::Mutex *mutex_)=0;
 
-  virtual int CompactionTargetLevel(int level)=0;
-  virtual int PhysicalStartLevel(int level) = 0;
-  virtual int PhysicalEndLevel(int level) = 0;
-  virtual int LogicalLevel(int level) = 0;
-
   virtual void printCurVersion() = 0;
 
-  virtual uint64_t TotalLevelSize(Version * v,int level)=0;
-  double calculate_compaction_score(Version *, int level);
+  virtual uint64_t TotalLevelSize(int level)=0;
+  virtual uint64_t TotalPartSize(int level, SortedTableType type)=0;
 
   void GetRange(const std::vector<FileMetaData*>& inputs,
                   InternalKey* smallest,
@@ -390,17 +379,6 @@ class VersionSet {
                    const std::vector<FileMetaData*>& inputs2,
                    InternalKey* smallest,
                    InternalKey* largest);
-  const std::string GetCompactionPointer(int level){
-	  return this->compact_pointer_[level];
-  }
-  const void ResetPointer(int level){
-	  int startlevel = this->PhysicalStartLevel(level);
-	  int endlevel = this->PhysicalEndLevel(level);
-	  for(int i=startlevel;i<=endlevel;i++){
-		  this->compact_pointer_[i].clear();
-		  assert(this->compact_pointer_[i].empty());
-	  }
-  }
 
  protected:
   class Builder;
@@ -417,7 +395,7 @@ class VersionSet {
   virtual void SetupOtherInputs(Compaction* c)=0;
 
   // Save current contents to *log
-  Status WriteSnapshot(log::Writer* log);
+  Status WriteSnapshot(Version *,log::Writer* log, VersionEdit *edit);
 
   void AppendVersion(Version* v);
 
@@ -431,24 +409,12 @@ class VersionSet {
   uint64_t log_number_;
   uint64_t prev_log_number_;  // 0 or backing store for memtable being compacted
 
-
-  //teng:
-  WritableFile* descriptor_file_sm_;
-  log::Writer* descriptor_log_sm_;
   // Opened lazily
   WritableFile* descriptor_file_;
   log::Writer* descriptor_log_;
   Version dummy_versions_;  // Head of circular doubly-linked list of versions.
   Version* current_;        // == dummy_versions_.prev_
   const InternalKeyComparator icmp_;
-
-  // Per-level key at which the next compaction at that level should start.
-  // Either an empty string, or a valid InternalKey.
-  std::string compact_pointer_[config::kNumLevels];
-
-
-  //teng: save current target level
-  int targetPLevel[config::LogicalLevelnum];
 
   // No copying allowed
   VersionSet(const VersionSet&);
@@ -474,8 +440,15 @@ class BasicVersionSet: public VersionSet {
 	  Status MoveLevelDown(int level, port::Mutex *mutex_);
 	  Status ClearLevel(int level, port::Mutex *mutex_);
 
-	  uint64_t TotalLevelSize(Version *v, int level);
+	  uint64_t TotalLevelSize(int level){
+		  return current_->TotalLevelSize(level);
+	  }
+	  uint64_t TotalPartSize(int level, SortedTableType type ){
+		  return current_->TotalPartSize(level,type);
+	  }
 	  int NumLevelFiles(int level);
+	  int NumPartFiles(int level,SortedTableType part);
+
 	  class Builder;
 	  int PhysicalStartLevel(int level);
 	  int PhysicalEndLevel(int level);
@@ -520,16 +493,13 @@ class Compaction {
   bool IsTrivialMove() const;
 
   // Add all inputs to this compaction as delete operations to *edit.
-  void AddInputDeletions(VersionEdit* edit, int startlevel, int levelnum, int targetlevel);
+  void AddInputDeletions(VersionEdit* edit, int level);
 
   // Returns true if the information we have available guarantees that
   // the compaction is producing data in "level+1" for which no data exists
   // in levels greater than "level+1".
   bool IsBaseLevelForKey(const Slice& user_key);
 
-  // Returns true iff we should stop building the current output
-  // before processing "internal_key".
-  bool ShouldStopBefore(const Slice& internal_key);
 
   // Release the input version for the compaction, once the compaction
   // is successful.
@@ -537,6 +507,7 @@ class Compaction {
 
   //teng:  check if this level needs to be move down entirely
   bool IsLevelNeedsMove();
+  Compaction(int level, CompactionType type);
 
  private:
   friend class Version;
@@ -545,32 +516,16 @@ class Compaction {
   friend class BasicVersionSet;
 
 
-  explicit Compaction(int level);
 
   int level_;
+  CompactionType type_;
   uint64_t max_output_file_size_;
   Version* input_version_;
   VersionEdit edit_;
 
-  // Each compaction reads inputs from "level_" and "level_+1"
-  // for sm, this can be as large as levels_per_logical_level
-  std::vector<FileMetaData*> inputs_[config::levels_per_logical_level+1];      // The two sets of inputs
+  // Each compaction reads inputs from "deletion part" and "insertion part"
+  std::vector<FileMetaData*> inputs_[2];      // The two sets of inputs
 
-  // State used to check for number of of overlapping grandparent files
-  // (parent == level_ + 1, grandparent == level_ + 2)
-  std::vector<FileMetaData*> grandparents_;
-  size_t grandparent_index_;  // Index in grandparent_starts_
-  bool seen_key_;             // Some output key has been seen
-  int64_t overlapped_bytes_;  // Bytes of overlap between current output
-                              // and grandparent files
-
-  // State for implementing IsBaseLevelForKey
-
-  // level_ptrs_ holds indices into input_version_->levels_: our state
-  // is that we are positioned at one of the file ranges for each
-  // higher level than the ones involved in this compaction (i.e. for
-  // all L >= level_ + 2).
-  size_t level_ptrs_[config::kNumLevels];
 };
 
 }  // namespace leveldb

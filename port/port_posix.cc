@@ -47,7 +47,7 @@ void CondVar::SignalAll() {
 }
 
 void InitOnce(OnceType* once, void (*initializer)()) {
-  PthreadCall("once", pthread_once(once, initializer));
+  PthreadCall("once", pthread_once((int *)once, initializer));
 }
 
 }  // namespace port

@@ -8,7 +8,7 @@
  */
 
 #include "dlsm_param.h"
-#include "dbformat.h"
+
 namespace leveldb{
 
 namespace config{
@@ -26,11 +26,10 @@ int kL0_size = 100;
 bool run_compaction = true;
 
 //teng: bloom filter in use
-int bloom_bits_use = -1;
+int bloom_bits_use = 15;
 
-//teng: end level for dlsm mode
-int dlsm_end_level = 6;
-
+int compaction_buffer_length[]{0,15,35,0};// = size_ratio + 5;
+int compaction_buffer_use_length[]{0,12,15,0};// = size_ratio + 5;
 //teng: key-value cache
 int key_cache_size = 0;
 }
@@ -38,19 +37,22 @@ int key_cache_size = 0;
 namespace runtime{
 
 double compaction_min_score = 1;
-bool two_phase_compaction = true;
 int warm_up_status = 0;
 bool need_warm_up = false;
+
+
+//parameters for print info
 bool print_version_info = false;
-bool print_lazy_version_info = false;
+bool print_compaction_buffer = false;
+bool print_dash = false;
 int hitratio_interval = 100;
-int max_print_level = leveldb::config::LogicalLevelnum-1;
-int level0_max_score = config::kL0_SlowdownWritesTrigger/config::kL0_CompactionTrigger;
+int max_print_level = config::kNumLevels-1;
+
 bool pre_caching = false;
-}
+}//runtime
 
 
-}
+}//leveldb
 
 
 

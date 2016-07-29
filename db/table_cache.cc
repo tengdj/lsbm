@@ -42,45 +42,7 @@ TableCache::~TableCache() {
   delete cache_;
 }
 
-Status TableCache::FindTable(uint64_t file_number, uint64_t file_size,
-                             Cache::Handle** handle) {
-  Status s;
-  char buf[sizeof(file_number)];
-  EncodeFixed64(buf, file_number);
-  Slice key(buf, sizeof(buf));
-  *handle = cache_->Lookup(key);
-  if (*handle == NULL) {
-    std::string fname = TableFileName(dbname_, file_number);
-    RandomAccessFile* file = NULL;
-    Table* table = NULL;
-    s = env_->NewRandomAccessFile(fname, &file);
-    if (!s.ok()) {
-      std::string old_fname = SSTTableFileName(dbname_, file_number);
-      if (env_->NewRandomAccessFile(old_fname, &file).ok()) {
-        s = Status::OK();
-      }
 
-
-    }
-
-    if (s.ok()) {
-      s = Table::Open(*options_,file_number, file, file_size, &table);
-    }
-
-    if (!s.ok()) {
-      assert(table == NULL);
-      delete file;
-      // We do not cache error results so that if the error is transient,
-      // or somebody repairs the file, we recover automatically.
-    } else {
-      TableAndFile* tf = new TableAndFile;
-      tf->file = file;
-      tf->table = table;
-      *handle = cache_->Insert(key, tf, 1, &DeleteEntry);
-    }
-  }
-  return s;
-}
 
 Iterator* TableCache::NewIterator(const ReadOptions& options,
                                   uint64_t file_number,
@@ -148,6 +110,46 @@ void TableCache::Evict(uint64_t file_number, uint64_t file_size) {
   }
 
   cache_->Erase(Slice(buf, sizeof(buf)));
+}
+
+Status TableCache::FindTable(uint64_t file_number, uint64_t file_size,
+                             Cache::Handle** handle) {
+  Status s;
+  char buf[sizeof(file_number)];
+  EncodeFixed64(buf, file_number);
+  Slice key(buf, sizeof(buf));
+  *handle = cache_->Lookup(key);
+  if (*handle == NULL) {
+    std::string fname = TableFileName(dbname_, file_number);
+    RandomAccessFile* file = NULL;
+    Table* table = NULL;
+    s = env_->NewRandomAccessFile(fname, &file);
+    if (!s.ok()) {
+      std::string old_fname = SSTTableFileName(dbname_, file_number);
+      if (env_->NewRandomAccessFile(old_fname, &file).ok()) {
+        s = Status::OK();
+      }
+
+
+    }
+
+    if (s.ok()) {
+      s = Table::Open(*options_,file_number, file, file_size, &table);
+    }
+
+    if (!s.ok()) {
+      assert(table == NULL);
+      delete file;
+      // We do not cache error results so that if the error is transient,
+      // or somebody repairs the file, we recover automatically.
+    } else {
+      TableAndFile* tf = new TableAndFile;
+      tf->file = file;
+      tf->table = table;
+      *handle = cache_->Insert(key, tf, 1, &DeleteEntry);
+    }
+  }
+  return s;
 }
 
 }  // namespace leveldb
