@@ -144,9 +144,7 @@ static int64_t write_latency = 0;
 static int64_t read_latency = 0;
 static int64_t readwrite_latency = 0;
 
-static int FLAGS_range_threads = 0;
-static long FLAGS_range_reads = -1;//max number of range query
-
+static int FLAGS_range_portion = 0;
 
 static int FLAGS_batch_size = 10;
 
@@ -161,8 +159,6 @@ static double rwrandom_wspeed = 0;
 
 static int FLAGS_random_seed = 301;
 
-static volatile int rwrandom_read_completed = 0;
-static volatile int rwrandom_write_completed = 0;
 static int last_random_read = 0;
 
 static int monitor_interval = -1; //microseconds
@@ -173,7 +169,7 @@ static leveldb::Histogram intv_read_hist_;
 static leveldb::Histogram intv_write_hist_;
 static double intv_start_;
 static leveldb::port::Mutex intv_mu_;
-static leveldb::port::Mutex random_read_mu_;
+static leveldb::port::Mutex read_mu_;
 
 static int hot_ratio = 1;
 
@@ -190,7 +186,10 @@ static int last_rw = 0;
 static int latency_gap = 50;
 
 static int write_threads = 0;
+
 /************* Extened Flags (END) *****************/
+static bool printstats_ = true;
+
 
 namespace leveldb {
 
@@ -559,7 +558,6 @@ class Benchmark {
     value_size_(FLAGS_value_size),
     entries_per_batch_(FLAGS_batch_size),
     random_reads_(FLAGS_random_reads),
-    range_reads_(FLAGS_range_reads),
     writes_(FLAGS_writes),
     heap_counter_(0) {
 
@@ -576,11 +574,11 @@ class Benchmark {
   }
 
   ~Benchmark() {
-
+	if(cache_){
+		delete cache_;
+	}
     delete db_;
-    if(cache_){
-    	delete cache_;
-    }
+
     delete filter_policy_;
     if(key_cache_){
     	delete key_cache_;
@@ -607,7 +605,6 @@ class Benchmark {
       // Reset parameters that may be overriddden below
       random_reads_ = FLAGS_random_reads;
       writes_ = FLAGS_writes;
-      range_reads_ = FLAGS_range_reads;
       value_size_ = FLAGS_value_size;
       entries_per_batch_ = FLAGS_batch_size;
       write_options_ = WriteOptions();
@@ -686,7 +683,7 @@ class Benchmark {
 
 	/*read_latency is the overall latency, latency for each thread should longer*/
 
-    int write_thread,random_read_thread,threads,range_read_thread;
+    int write_thread,random_read_thread,threads;
 
 	if(method==&Benchmark::ReadWrite){//mix mode
     	write_thread = 0;
@@ -699,12 +696,11 @@ class Benchmark {
     	read_latency = read_latency*(random_read_thread);
     }
 	write_threads = write_thread;
-    range_read_thread = (FLAGS_range_reads==0)?0:FLAGS_range_threads;
     if(random_read_thread==0&&threads==0){
        	runtime::need_warm_up = false;
     }
 
-    int n = write_thread+random_read_thread+range_read_thread+threads;
+    int n = write_thread+random_read_thread+threads;
   	Random rand_(FLAGS_random_seed);
     SharedState shared;
     shared.total = n;
@@ -730,14 +726,6 @@ class Benchmark {
     for (; i < write_thread+random_read_thread; i++) {
       arg[i].bm = this;
       arg[i].method = &Benchmark::Random_Read;
-      arg[i].shared = &shared;
-      arg[i].thread = new ThreadState(i, &rand_);
-      arg[i].thread->shared = &shared;
-      Env::Default()->StartThread(ThreadBody, &arg[i]);
-    }
-    for (; i < write_thread+random_read_thread+range_read_thread; i++) {
-      arg[i].bm = this;
-      arg[i].method = &Benchmark::Range_Read;
       arg[i].shared = &shared;
       arg[i].thread = new ThreadState(i, &rand_);
       arg[i].thread->shared = &shared;
@@ -795,7 +783,99 @@ class Benchmark {
       exit(1);
     }
   }
-void WaitForWarmUp(int type){
+
+  void ConductWarmUp(){
+  	ReadOptions options;
+
+//  	if(FLAGS_range_portion != 100){
+//  		std::string value;
+//  		char key[100];
+//  		//align k
+//  		uint64_t k = (FLAGS_read_from/hot_ratio)*hot_ratio;
+//  		long long hashkey;
+//  		//int cachesize = cache_->;
+//  		int upto = FLAGS_read_upto;
+//  		generator::IntegerGenerator *mygenerator;
+//  		bool iszipfian = false;
+//  		if(strcmp(FLAGS_read_ycsb_workload,"zipfian")==0){
+//  		   iszipfian = true;
+//  		   mygenerator = new generator::ZipfianGenerator(FLAGS_read_from,(long int)FLAGS_read_upto, FLAGS_zipfian_constant);
+//  		}
+//  		uint64_t truek = 0;
+//  		if(iszipfian){
+//  			upto = 1000000;
+//  		}else{
+//  			upto = FLAGS_read_upto;
+//  		}
+//  		while(true){
+//
+//  			if(iszipfian){
+//  				truek = mygenerator->nextInt();
+//  				if(k++>upto){
+//  					break;
+//  				}
+//  			}else{
+//  				if(k>=FLAGS_read_upto||random_reads_==0){
+//  				  break;
+//  				}
+//  				k += hot_ratio;
+//  				truek = k;
+//  			}
+//  			snprintf(key, sizeof(key), "user%019ld",truek);
+//  			db_->Get(options,key,&value);
+//  			double memused = 0,keyused = 0;
+//  			fprintf(stderr,"%10ld\%10d ",k,upto);
+//  			if(cache_){
+//  				memused = 100.0*(cache_->Percent());
+//  				fprintf(stderr,"block cache usage %f",memused);
+//  			}
+//  			if(key_cache_){
+//  				keyused = 100.0*(key_cache_->Percent());
+//  				fprintf(stderr,"key cache usage %f",keyused);
+//  			}
+//  			fprintf(stderr,"\n");
+//  			//if((cache_&&memused>=99)&&(key_cache_&&keyused>=99))
+//  			//{
+//  				//break;
+//  			//}
+//
+//  		}
+//  	}else
+  	{
+  	  uint64_t key_from = FLAGS_read_from;
+  	  uint64_t key_to;
+  	  uint64_t step = 100000;
+  	  char startch[100],endch[100];
+  	  while(key_from<FLAGS_read_upto){
+  		  key_to = key_from+step;
+  		  if(key_to>FLAGS_read_upto){
+  			  key_to = FLAGS_read_upto;
+  		  }
+
+  		  snprintf(startch, sizeof(startch), "user%019ld", key_from);
+  		  snprintf(endch, sizeof(endch), "user%019ld", key_to);
+
+  		   //printf("%ld %ld\n",read_key_from, read_key_to);
+  		   std::string startstr(startch);
+  		   std::string endstr(endch);
+  		   Slice start(startstr);
+  		   Slice end(endstr);
+  		   db_->RangeQuery(options,start,end);
+  		  	fprintf(stderr,"%10ld\%10ld ",key_to,FLAGS_read_upto);
+  			if(cache_){
+  				fprintf(stderr,"block cache usage %f",100.0*(cache_->Percent()));
+  			}
+  			fprintf(stderr,"\n");
+  			key_from += step;
+  	  }
+
+  	}
+
+  	runtime::warm_up_status = 2;
+  }
+
+
+void WaitForWarmUp(){
 	//printf("enter wait %d\n",type);
 	while(leveldb::runtime::needWarmUp()&&!leveldb::runtime::doneWarmUp()){
 	   Env::Default()->SleepForMicroseconds(100000);
@@ -803,7 +883,187 @@ void WaitForWarmUp(int type){
 	//printf("leave wait %d\n",type);
 }
 
+
 void Random_Read(ThreadState* thread) {
+
+    ReadOptions randomoptions;
+    ReadOptions rangeoptions;
+    rangeoptions.range_query_ = true;
+    rangeoptions.fill_cache = true;
+
+    std::string value;
+    Status s;
+    bool isFound;
+    time_t begin, now;
+	struct timeval start, end;
+	int64_t latency = 0;
+
+    int found = 0;
+    int done = 0;
+    char key[100];
+
+
+	generator::IntegerGenerator *mygenerator;
+	generator::IntegerGenerator *noisegenerator = new generator::UniformIntegerGenerator(FLAGS_key_from,FLAGS_key_upto);
+	if(FLAGS_read_ycsb_workload==NULL){
+		mygenerator = new generator::CounterGenerator(FLAGS_read_from,FLAGS_read_upto);
+	}
+	else if(strcmp(FLAGS_read_ycsb_workload,"zipfian")==0){
+	   mygenerator = new generator::ZipfianGenerator(FLAGS_read_from,(long int)FLAGS_read_upto, FLAGS_zipfian_constant);
+	}
+	else if(strcmp(FLAGS_read_ycsb_workload,"latest")==0){
+	   generator::CounterGenerator base(FLAGS_read_upto);
+	   mygenerator = new generator::SkewedLatestGenerator(base);
+	}
+	else if(strcmp(FLAGS_read_ycsb_workload,"uniform")==0){
+	   mygenerator = new generator::UniformIntegerGenerator(FLAGS_read_from,FLAGS_read_upto);
+	   int repeattimes = random()*100000;
+	   for(int i=0;i<repeattimes;i++){
+		   mygenerator->nextInt();
+	   }
+	}
+	else {
+	   mygenerator = new generator::CounterGenerator(FLAGS_read_from,FLAGS_read_upto);
+	}
+/*
+	if(cache_==NULL&&key_cache_==NULL){
+		leveldb::runtime::need_warm_up = false;
+	}
+*/
+	bool startwarmup = false;
+	if(runtime::needWarmUp()){
+		read_mu_.Lock();
+		startwarmup = runtime::notStartWarmUp();
+		if(startwarmup){
+			runtime::warm_up_status = 1;
+		}
+		read_mu_.Unlock();
+		if(startwarmup){
+			ConductWarmUp();
+		}
+		else{
+			WaitForWarmUp();
+		}
+	}
+
+
+	time(&begin);
+
+    uint64_t k=0;
+    int count = 0;
+    int tmpcount = 0;
+    char startch[100],endch[100];
+    time_t start_intv = 0, now_intv = 0;
+    gettimeofday(&start,NULL);
+    while(true)
+    {
+       if(start_intv==0){
+    	   time(&start_intv);
+       }
+       time(&now);
+	   if (difftime(now, begin) > FLAGS_countdown || (runtime::num_reads_>=random_reads_&&random_reads_>=0)){
+    		break;
+	   }
+
+       if(FLAGS_read_throughput==0){
+    	   Env::Default()->SleepForMicroseconds(FLAGS_countdown*1000000);
+    	   break;
+       }
+       if(random()*100>FLAGS_noise_percent){
+           k = (mygenerator->nextInt()/hot_ratio)*hot_ratio;
+       }else{
+           k = noisegenerator->nextInt();
+       }
+
+       if(random()*100>FLAGS_range_portion){
+    	  snprintf(key, sizeof(key), "user%019ld",k);
+		  s = db_->Get(randomoptions, key, &value);
+		  isFound = s.ok();
+		  done++;
+		  if (isFound) {
+			found++;
+		  }
+		  thread->stats.FinishedReadOp();
+		  read_mu_.Lock();
+	      runtime::num_reads_++;
+
+		  read_mu_.Unlock();
+
+       }else{
+		  long long read_key_from,read_key_to;
+		  read_key_from = k;
+		  read_key_to = read_key_from+FLAGS_range_size;
+		  if(read_key_to>FLAGS_key_upto){
+			  read_key_to = FLAGS_key_upto;
+		  }
+
+		   snprintf(startch, sizeof(startch), "user%019lld", read_key_from);
+		   snprintf(endch, sizeof(endch), "user%019lld", read_key_to);
+
+		   //printf("%ld %ld\n",read_key_from, read_key_to);
+		   std::string startstr(startch);
+		   std::string endstr(endch);
+		   Slice start(startstr);
+		   Slice end(endstr);
+		 tmpcount = db_->RangeQuery(rangeoptions,start,end);
+
+		 count += tmpcount;
+		 done++;
+		 read_mu_.Lock();
+		 range_total_ += tmpcount;
+		 range_query_completed_++;
+		 read_mu_.Unlock();
+
+       }
+
+       read_mu_.Lock();
+       if(thread->tid == write_threads){
+    	   time(&now_intv);
+    	   if(difftime(now_intv,start_intv)>=rw_interval){
+    		 if(runtime::num_reads_-last_random_read!=0){
+    			 fprintf(stdout,"readop: finishd %ld ops in %d sec, timepassed: %d\n",runtime::num_reads_-last_random_read,rw_interval,(int)difftime(now_intv,begin));
+    	     }
+    	     last_random_read = runtime::num_reads_;
+    	     if(range_query_completed_-last_range_query_!=0){
+    	    	 fprintf(stdout,"rangeop: finishd %d ops in %d sec, averagely %d found in each query, timepassed: %d\n",
+					range_query_completed_-last_range_query_,
+					rw_interval,
+					(range_total_-last_range_count_)/(range_query_completed_-last_range_query_),
+					(int)difftime(now,begin));
+    	     }
+    	     last_range_query_ = range_query_completed_;
+    	     last_range_count_ = range_total_;
+    	     start_intv = now_intv;
+    	   }
+       }
+       read_mu_.Unlock();
+//       if(done%latency_gap==0){
+//	      gettimeofday(&end,NULL);
+//	      latency = (end.tv_sec-start.tv_sec)*1000000+(end.tv_usec-start.tv_usec);
+//	      if(FLAGS_read_throughput>0&&latency_gap*read_latency>latency)
+//	      {
+//	       Env::Default()->SleepForMicroseconds(read_latency*latency_gap-latency);
+//	      }
+//	      gettimeofday(&start,NULL);
+//       }
+
+
+    }//end while
+
+    char msg[100];
+    snprintf(msg, sizeof(msg), "(%d of %d found in one read thread)", found, done);
+    thread->stats.AddMessage(msg);
+
+    time(&now);
+    fprintf(stdout,"completes %d read ops (out of %ld) in %.3f seconds, %d found\n",
+      done, runtime::num_reads_, difftime(now, begin), found);
+    fprintf(stdout,"totally operated %d range queries (out of %d), and %d results (out of %d) are found\n"
+        		,done,range_query_completed_,count,range_total_);
+
+}
+
+
+void Random_Read1(ThreadState* thread) {
 
     ReadOptions options;
 
@@ -844,54 +1104,25 @@ void Random_Read(ThreadState* thread) {
 */
 	bool startwarmup = false;
 	if(runtime::needWarmUp()){
-	random_read_mu_.Lock();
-	startwarmup = runtime::notStartWarmUp();
-	if(startwarmup){
-		runtime::warm_up_status = 1;
-	}
-	random_read_mu_.Unlock();
-	if(startwarmup){
-		//align k
-		int k = (FLAGS_read_from/hot_ratio)*hot_ratio;
-		//int cachesize = cache_->;
-		const int upto = FLAGS_read_upto;
-		while(true){
-		    if(k>=FLAGS_read_upto||random_reads_==0){
-		      break;
-		    }
-
-		    k += hot_ratio;
-		    snprintf(key, sizeof(key), "user%019d",k);
-		    db_->Get(options,key,&value);
-		    double memused = 0,keyused = 0;
-		    fprintf(stderr,"%10d\%10d ",k,upto);
-		    if(cache_){
-		    	memused = 100.0*(cache_->Percent());
-		    	fprintf(stderr,"block cache usage %f",memused);
-		    }
-		    if(key_cache_){
-		    	keyused = 100.0*(key_cache_->Percent());
-		    	fprintf(stderr,"key cache usage %f",keyused);
-		    }
-	    	fprintf(stderr,"\n");
-		    //if((cache_&&memused>=99)&&(key_cache_&&keyused>=99))
-		    //{
-		    	//break;
-		    //}
-
-	   }
-	   runtime::warm_up_status = 2;
-
-	}
-	else{
-		WaitForWarmUp(1);
-	}
+		read_mu_.Lock();
+		startwarmup = runtime::notStartWarmUp();
+		if(startwarmup){
+			runtime::warm_up_status = 1;
+		}
+		read_mu_.Unlock();
+		if(startwarmup){
+			ConductWarmUp();
+			db_->RefineCompactionBuffer();
+		}
+		else{
+			WaitForWarmUp();
+		}
 	}
 
 
 	time(&begin);
 
-    int k=0;
+    uint64_t k=0;
     time_t start_intv = 0, now_intv = 0;
     gettimeofday(&start,NULL);
     while(true)
@@ -900,7 +1131,7 @@ void Random_Read(ThreadState* thread) {
     	   time(&start_intv);
        }
        time(&now);
-	   if (difftime(now, begin) > FLAGS_countdown || (rwrandom_read_completed>=random_reads_&&random_reads_>=0)){
+	   if (difftime(now, begin) > FLAGS_countdown || (runtime::num_reads_>=random_reads_&&random_reads_>=0)){
     		break;
 	   }
 
@@ -913,7 +1144,7 @@ void Random_Read(ThreadState* thread) {
        }else{
            k = noisegenerator->nextInt();
        }
-       snprintf(key, sizeof(key), "user%019d",k);
+       snprintf(key, sizeof(key), "user%019ld",k);
        s = db_->Get(options, key, &value);
        isFound = s.ok();
        done++;
@@ -922,17 +1153,17 @@ void Random_Read(ThreadState* thread) {
        }
        thread->stats.FinishedReadOp();
 
-       random_read_mu_.Lock();
-       rwrandom_read_completed++;
+       read_mu_.Lock();
+       runtime::num_reads_++;
        if(thread->tid == write_threads){
     	   time(&now_intv);
     	   if(difftime(now_intv,start_intv)>=rw_interval){
-    	     fprintf(stdout,"readop: finishd %d ops in %d sec, timepassed: %d\n",rwrandom_read_completed-last_random_read,rw_interval,(int)difftime(now_intv,begin));
-    	     last_random_read = rwrandom_read_completed;
+    	     fprintf(stdout,"readop: finishd %ld ops in %d sec, timepassed: %d\n",runtime::num_reads_-last_random_read,rw_interval,(int)difftime(now_intv,begin));
+    	     last_random_read = runtime::num_reads_;
     	     start_intv = now_intv;
     	   }
        }
-       random_read_mu_.Unlock();
+       read_mu_.Unlock();
        if(done%latency_gap==0){
 	      gettimeofday(&end,NULL);
 	      latency = (end.tv_sec-start.tv_sec)*1000000+(end.tv_usec-start.tv_usec);
@@ -951,55 +1182,70 @@ void Random_Read(ThreadState* thread) {
     thread->stats.AddMessage(msg);
 
     time(&now);
-    fprintf(stdout,"completes %d read ops (out of %d) in %.3f seconds, %d found\n",
-      done, rwrandom_read_completed, difftime(now, begin), found);
+    fprintf(stdout,"completes %d read ops (out of %ld) in %.3f seconds, %d found\n",
+      done, runtime::num_reads_, difftime(now, begin), found);
 
 }
+
 double random()
 {
 	return (double)(rand()/(double)RAND_MAX);
 }
-/*modification required for key*/
-
-int sequentialread(const ReadOptions options, int range)
-{
-      double from_portion = random();
-      long long read_key_from,read_key_to;
-      if(100*random()<FLAGS_noise_percent){
-    	  read_key_from = (FLAGS_key_upto-FLAGS_key_from)*from_portion+FLAGS_key_from;
-    	  read_key_to = read_key_from+range;
-    	  if(read_key_to>=FLAGS_key_upto){
-    	   	  read_key_to = FLAGS_key_upto;
-    	  }
-      }else{
-    	  read_key_from = (FLAGS_read_upto-FLAGS_read_from)*from_portion+FLAGS_read_from;
-    	  read_key_to = read_key_from+range;
-    	  if(read_key_to>=FLAGS_read_upto){
-    	      read_key_to = FLAGS_read_upto;
-    	  }
-      }
-
-      char startch[100],endch[100];
-      snprintf(startch, sizeof(startch), "user%019lld", read_key_from);
-      snprintf(endch, sizeof(endch), "user%019lld", read_key_to);
-
-      std::string startstr(startch);
-      std::string endstr(endch);
-      Slice start(startstr);
-      Slice end(endstr);
-      return db_->RangeQuery(options,start,end);
-}
-
 void Range_Read(ThreadState* thread) {
-    WaitForWarmUp(2);
     ReadOptions options;
     options.fill_cache = false;
     time_t begin, now;
     time_t start_intv;
+    char key[100];
+    std::string value;
+
+
+    bool printstats = false;
+    bool startwarmup = false;
+    read_mu_.Lock();
+    if(printstats_){
+    	printstats_ = false;
+    	printstats = true;
+    }
+	read_mu_.Unlock();
+
+	if(runtime::needWarmUp()){
+		read_mu_.Lock();
+		startwarmup = runtime::notStartWarmUp();
+		if(startwarmup){
+			runtime::warm_up_status = 1;
+		}
+		read_mu_.Unlock();
+		if(startwarmup){
+			ConductWarmUp();
+		}
+		else{
+			WaitForWarmUp();
+		}
+	}
+	generator::IntegerGenerator *mygenerator;
+	generator::IntegerGenerator *noisegenerator = new generator::UniformIntegerGenerator(FLAGS_key_from,FLAGS_key_upto);
+	if(FLAGS_read_ycsb_workload==NULL){
+		mygenerator = new generator::CounterGenerator(FLAGS_read_from,FLAGS_read_upto);
+	}
+	else if(strcmp(FLAGS_read_ycsb_workload,"zipfian")==0){
+	   mygenerator = new generator::ZipfianGenerator(FLAGS_read_from,(long int)FLAGS_read_upto, FLAGS_zipfian_constant);
+	}
+	else if(strcmp(FLAGS_read_ycsb_workload,"latest")==0){
+	   generator::CounterGenerator base(FLAGS_read_upto);
+	   mygenerator = new generator::SkewedLatestGenerator(base);
+	}
+	else if(strcmp(FLAGS_read_ycsb_workload,"uniform")==0){
+	   mygenerator = new generator::UniformIntegerGenerator(FLAGS_read_from,FLAGS_read_upto);
+	}
+	else {
+	   mygenerator = new generator::CounterGenerator(FLAGS_read_from,FLAGS_read_upto);
+	}
 
     int done = 0;
     int count = 0;
     int tmpcount = 0;
+    char startch[100],endch[100];
 	time(&begin);
 	time(&start_intv);
     while(true)
@@ -1011,25 +1257,46 @@ void Range_Read(ThreadState* thread) {
       if(range_query_completed_>=range_reads_&&range_reads_>=0){
     	           break;
       }
-      tmpcount = sequentialread(options,FLAGS_range_size);
+
+		long long read_key_from,read_key_to;
+		if(100*random()<FLAGS_noise_percent){
+		  read_key_from = noisegenerator->nextInt();
+		  read_key_to = read_key_from+FLAGS_range_size;
+		}else{
+		  read_key_from = mygenerator->nextInt();
+		  read_key_to = read_key_from+FLAGS_range_size;
+		  if(read_key_to>FLAGS_read_upto){
+			  read_key_to = FLAGS_read_upto;
+		  }
+		}
+
+        snprintf(startch, sizeof(startch), "user%019lld", read_key_from);
+        snprintf(endch, sizeof(endch), "user%019lld", read_key_to);
+
+        std::string startstr(startch);
+        std::string endstr(endch);
+        Slice start(startstr);
+        Slice end(endstr);
+      tmpcount = db_->RangeQuery(options,start,end);
 
       count += tmpcount;
       done++;
-
       range_query_mu_.Lock();
       range_total_ += tmpcount;
       range_query_completed_++;
 
-      time(&now);
-      if(difftime(now,start_intv)>=rw_interval){
-          	fprintf(stdout,"rangeop: finishd %d ops in %d sec, averagely %d found in each query, timepassed: %d\n",
-          			range_query_completed_-last_range_query_,
-					rw_interval,
-					(range_total_-last_range_count_)/(range_query_completed_-last_range_query_),
-					(int)difftime(now,begin));
-          	last_range_query_ = range_query_completed_;
-          	last_range_count_ = range_total_;
-          	start_intv = now;
+      if(printstats){
+		  time(&now);
+		  if(difftime(now,start_intv)>=rw_interval){
+				fprintf(stdout,"rangeop: finishd %d ops in %d sec, averagely %d found in each query, timepassed: %d\n",
+						range_query_completed_-last_range_query_,
+						rw_interval,
+						(range_total_-last_range_count_)/(range_query_completed_-last_range_query_),
+						(int)difftime(now,begin));
+				last_range_query_ = range_query_completed_;
+				last_range_count_ = range_total_;
+				start_intv = now;
+		  }
       }
 
       range_query_mu_.Unlock();
@@ -1040,8 +1307,127 @@ void Range_Read(ThreadState* thread) {
 }
 /*modification required for key*/
 
-  void Random_Write(ThreadState* thread) {
-	WaitForWarmUp(0);
+void Random_Write(ThreadState* thread) {
+
+   RandomGenerator gen;
+   WriteBatch batch;
+   Status s;
+   int64_t bytes = 0;
+
+   time_t begin, now;
+	struct timeval start, end;
+	int64_t latency = 0;
+   int bnum = 0;
+   batch.Clear();
+
+   if(writes_>0)
+       fprintf(stderr, "RWRandom_Write will try to write %d ops\n", writes_);
+
+   int done = 0;
+
+   uint64_t key_span = FLAGS_write_upto-FLAGS_write_from;
+   uint64_t *kset = new uint64_t[key_span];
+   for(int i=0;i<key_span;i++){
+	   kset[i] = FLAGS_write_from+i;
+   }
+   if(strcmp(FLAGS_write_ycsb_workload,"uniform")==0){
+	   printf("initiating writer......\n");
+	   generator::shuffle(kset,key_span);
+   }
+
+	WaitForWarmUp();
+
+   time(&begin);
+
+	uint64_t k;
+	time_t start_intv = 0, now_intv = 0;
+	gettimeofday(&start,NULL);
+	int last_write = 0;
+   while(true){
+     char key[100];
+     time(&now);
+     if(start_intv==0){
+   	  time(&start_intv);
+     }
+	  if (difftime(now, begin) >= FLAGS_countdown-1)
+         break;
+     if(done>=writes_&&writes_>=0)
+     {
+   	  if (bnum != 0) {
+   		  bnum = 0;
+   	      s = db_->Write(write_options_, &batch);
+   	      batch.Clear();
+   	      if (!s.ok()) {
+   	           fprintf(stderr, "put error: %s\n", s.ToString().c_str());
+   	           exit(1);
+   	      }
+   	      thread->stats.AddBytes(bytes);
+   	      bytes = 0;
+   	  }
+   	  if (difftime(now, begin) > FLAGS_countdown-1){
+	            break;
+   	  }
+   	  else{
+              fprintf(stderr,"I have finished %d write and now I need to sleep for %d seconds %ld\n",writes_, (int)(FLAGS_countdown-difftime(now,begin)),runtime::write_cursor);
+              break;
+   	  }
+     }
+
+     if(++runtime::write_cursor >= key_span){
+		 runtime::write_cursor = 0;
+	 }
+     k = kset[runtime::write_cursor];
+
+     snprintf(key, sizeof(key), "user%019ld", k);
+     Slice keyslice(key);
+     Slice valueslice = gen.Generate(value_size_);
+     bytes += value_size_ + strlen(key);
+
+     batch.Put(keyslice, valueslice);
+     db_->UpdateKeyCache(keyslice,valueslice);
+
+     bnum ++;
+     done ++;
+
+     if (bnum == entries_per_batch_) {
+         bnum = 0;
+         s = db_->Write(write_options_, &batch);
+         batch.Clear();
+         if (!s.ok()) {
+           fprintf(stderr, "put error: %s\n", s.ToString().c_str());
+           exit(1);
+         }
+         thread->stats.AddBytes(bytes);
+         bytes = 0;
+      }
+     thread->stats.FinishedWriteOp();
+	  runtime::num_writes_++;
+	  time(&now_intv);
+	  if(difftime(now_intv,start_intv)>=rw_interval){
+	     fprintf(stdout,"writeop: finishd %ld ops in %d sec, timepassed: %d %ld\n",runtime::num_writes_-last_write,rw_interval,(int)difftime(now_intv,begin),runtime::write_cursor);
+	     last_write = runtime::num_writes_;
+	     time(&start_intv);
+	  }
+     if(done%latency_gap==0){
+	    gettimeofday(&end,NULL);
+	    latency = (end.tv_sec-start.tv_sec)*1000000+(end.tv_usec-start.tv_usec);
+	    if(write_latency*latency_gap>latency&&FLAGS_write_throughput>0)
+	    {
+	       Env::Default()->SleepForMicroseconds(write_latency*latency_gap-latency);
+	    }
+		gettimeofday(&start,NULL);
+
+     }
+   }
+
+   delete  kset;
+   time(&now);
+   fprintf(stdout,"completes %d write ops in %.3f seconds\n",done, difftime(now, begin));
+
+}
+
+  void Random_Write1(ThreadState* thread) {
+	WaitForWarmUp();
 
     RandomGenerator gen;
     WriteBatch batch;
@@ -1057,7 +1443,7 @@ void Range_Read(ThreadState* thread) {
     if(writes_>0)
         fprintf(stderr, "RWRandom_Write will try to write %d ops\n", writes_);
 
-    int done = 0;
+    uint64_t done = 0;
 	generator::IntegerGenerator *mygenerator;
 	if(FLAGS_write_ycsb_workload==NULL){
 	   mygenerator = new generator::CounterGenerator(FLAGS_write_from,FLAGS_write_upto);
@@ -1133,13 +1519,13 @@ void Range_Read(ThreadState* thread) {
           }
           thread->stats.AddBytes(bytes);
           bytes = 0;
-       }
+      }
       thread->stats.FinishedWriteOp();
-	  rwrandom_write_completed++;
+	  runtime::num_writes_++;
 	  time(&now_intv);
 	  if(difftime(now_intv,start_intv)>=rw_interval){
-	     fprintf(stdout,"writeop: finishd %d ops in %d sec, timepassed: %d\n",rwrandom_write_completed-last_write,rw_interval,(int)difftime(now_intv,begin));
-	     last_write = rwrandom_write_completed;
+	     fprintf(stdout,"writeop: finishd %ld ops in %d sec, timepassed: %d\n",runtime::num_writes_-last_write,rw_interval,(int)difftime(now_intv,begin));
+	     last_write = runtime::num_writes_;
 	     time(&start_intv);
 	  }
       if(done%latency_gap==0){
@@ -1155,7 +1541,7 @@ void Range_Read(ThreadState* thread) {
     }
 
     time(&now);
-    fprintf(stdout,"completes %d write ops in %.3f seconds\n",done, difftime(now, begin));
+    fprintf(stdout,"completes %ld write ops in %.3f seconds\n",done, difftime(now, begin));
 
 }
 
@@ -1221,40 +1607,17 @@ void Range_Read(ThreadState* thread) {
   	}
   	bool startwarmup = false;
   	if(runtime::needWarmUp()){
-  		random_read_mu_.Lock();
+  		read_mu_.Lock();
   		startwarmup = runtime::notStartWarmUp();
   		if(startwarmup){
   			runtime::warm_up_status = 1;
   		}
-  		random_read_mu_.Unlock();
+  		read_mu_.Unlock();
   		if(startwarmup){
-  			//align k
-  			int k = (FLAGS_read_from/hot_ratio)*hot_ratio;
-  			const int upto = FLAGS_read_upto;
-  			while(true){
-  			    if(k>=FLAGS_read_upto||random_reads_==0){
-  			      break;
-  			    }
-
-  			    k += hot_ratio;
-  			    snprintf(key, sizeof(key), "user%019d",k);
-  			    db_->Get(options,key,&value);
-  			    double memused = 0,keyused = 0;
-  			    fprintf(stderr,"%10d\%10d ",k,upto);
-  			    if(cache_){
-  			    	memused = 100.0*(cache_->Percent());
-  			    	fprintf(stderr,"block cache usage %f",memused);
-  			    }
-  			    if(key_cache_){
-  			    	keyused = 100.0*(key_cache_->Percent());
-  			    	fprintf(stderr,"key cache usage %f",keyused);
-  			    }
-  		    	fprintf(stderr,"\n");
-  		   }
-  		   runtime::warm_up_status = 2;
+  			ConductWarmUp();
   		}
   		else{
-  			WaitForWarmUp(1);
+  			WaitForWarmUp();
   		}
   	}
   	time(&begin);
@@ -1325,8 +1688,8 @@ void Range_Read(ThreadState* thread) {
       thread->stats.AddMessage(msg);
 
       time(&now);
-      printf("completes %d read ops (out of %d) in %.3f seconds, %d found\n",
-        readdone, rwrandom_read_completed, difftime(now, begin), found);
+      printf("completes %d read ops (out of %ld) in %.3f seconds, %d found\n",
+        readdone, runtime::num_reads_, difftime(now, begin), found);
       printf("completes %d write ops in %.3f seconds\n",writedone, difftime(now, begin));
 
   }
@@ -1374,7 +1737,7 @@ int main(int argc, char** argv) {
       FLAGS_random_reads = n;
     } else if (sscanf(argv[i], "--writes=%d%c", &n, &junk) == 1) {
       FLAGS_writes = n;
-    } else if (sscanf(argv[i], "--random_threads=%d%c", &n, &junk) == 1) {
+    } else if (sscanf(argv[i], "--read_threads=%d%c", &n, &junk) == 1) {
       FLAGS_random_threads = n;
     } else if (sscanf(argv[i], "--value_size=%d%c", &n, &junk) == 1) {
       FLAGS_value_size = n;
@@ -1389,6 +1752,9 @@ int main(int argc, char** argv) {
       FLAGS_bloom_bits = n;
     } else if (sscanf(argv[i], "--bloom_bits_use=%d%c", &n, &junk) == 1) {
       leveldb::config::bloom_bits_use = n;
+
+    } else if (sscanf(argv[i], "--cached_block_threshold=%d%c", &n, &junk) == 1) {
+        leveldb::config::num_blocks_cached_threshold = n;
     } else if (sscanf(argv[i], "--open_files=%d%c", &n, &junk) == 1) {
       FLAGS_open_files = n;
     } else if (strncmp(argv[i], "--db=", 5) == 0) {
@@ -1416,14 +1782,14 @@ int main(int argc, char** argv) {
       FLAGS_random_seed = d;
     } else if (sscanf(argv[i], "--run_compaction=%d%c", &n, &junk) == 1) {
       leveldb::config::run_compaction = n;
-    } else if (sscanf(argv[i], "--pre_caching=%d%c", &n, &junk) == 1) {
-      leveldb::runtime::pre_caching = n;
     } else if (sscanf(argv[i], "--print_version_info=%d%c", &n, &junk) == 1) {
       leveldb::runtime::print_version_info = n;
     } else if (sscanf(argv[i], "--print_compaction_buffer=%d%c", &n, &junk) == 1) {
           leveldb::runtime::print_compaction_buffer = n;
     } else if (sscanf(argv[i], "--print_dash=%d%c", &n, &junk) == 1) {
         leveldb::runtime::print_dash = n;
+    } else if (sscanf(argv[i], "--pre_caching=%d%c", &n, &junk) == 1) {
+        leveldb::runtime::pre_caching = n;
     } else if (sscanf(argv[i], "--warmup=%d%c", &n, &junk) == 1) {
         leveldb::runtime::need_warm_up = n;
         if(leveldb::runtime::needWarmUp()){
@@ -1445,10 +1811,8 @@ int main(int argc, char** argv) {
 	  read_latency = 1000000/FLAGS_read_throughput;
     } else if (sscanf(argv[i], "--range_size=%d%c", &n, &junk) == 1) {
         FLAGS_range_size = n;
-    } else if (sscanf(argv[i], "--range_threads=%d%c", &n, &junk) == 1) {
-        FLAGS_range_threads = n;
-    } else if (sscanf(argv[i], "--range_reads=%d%c", &n, &junk) == 1) {
-    	FLAGS_range_reads = n;
+    } else if (sscanf(argv[i], "--range_portion=%d%c", &n, &junk) == 1) {
+        FLAGS_range_portion = n;
     } else if (sscanf(argv[i], "--hot_ratio=%d%c", &n, &junk) == 1) {
     	if(n!=0){
     		hot_ratio = 100/n;
@@ -1471,15 +1835,21 @@ int main(int argc, char** argv) {
         FLAGS_zipfian_constant = d;
     }  else if (sscanf(argv[i], "--max_print_level=%d%c", &n, &junk) == 1) {
         leveldb::runtime::max_print_level = n;
-    }  /*else if (sscanf(argv[i], "--compaction_buffer_length=%d%c", &n, &junk) == 1) {
-        leveldb::config::compaction_buffer_length = n;
-    } */ else if (sscanf(argv[i], "--compaction_buffer_use_length=%d%c", &n, &junk) == 1) {
-        leveldb::config::compaction_buffer_use_length[n%10] = n/10;
+    }else if (sscanf(argv[i], "--hot_file_threshold=%d%c", &n, &junk) == 1) {
+        leveldb::config::hot_file_threshold = n;
+    }
+    else if (sscanf(argv[i], "--compaction_buffer_length=%d%c", &n, &junk) == 1) {
+        leveldb::runtime::compaction_buffer_length[n%10] = n/10;
+    }  else if (sscanf(argv[i], "--compaction_buffer_management_interval=%d%c", &n, &junk) == 1) {
+        leveldb::runtime::compaction_buffer_management_interval[n%10] = n/10;
+    }  else if (sscanf(argv[i], "--preload_metadata=%d%c", &n, &junk) == 1) {
+        leveldb::config::preload_metadata = n;
+    }  else if (sscanf(argv[i], "--manage_compaction_buffer=%d%c", &n, &junk) == 1) {
+        leveldb::config::manage_compaction_buffer = n;
     }  else if (sscanf(argv[i], "--compaction_min_score=%lf%c", &d, &junk) == 1) {
     	if(d<1){
     		leveldb::runtime::compaction_min_score = d;
         }
-
     } else {
     	printf("%s\n",argv[i]);
       fprintf(stderr, "Invalid flag '%s'\n", argv[i]);

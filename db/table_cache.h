@@ -45,11 +45,15 @@ class TableCache {
              void (*handle_result)(void*, const Slice&, const Slice&));
 
   Status GetTable(uint64_t file_number, uint64_t file_size,Table **table);
+  Status LoadTable(uint64_t file_number, uint64_t file_size);
 
   // Evict any entry for the specified file number
   void Evict(uint64_t file_number, uint64_t file_size);
   Status FindTable(uint64_t file_number, uint64_t file_size, Cache::Handle**);
 
+  double Usage(){
+	  return cache_->Percent();
+  }
  private:
   Env* const env_;
   const std::string dbname_;

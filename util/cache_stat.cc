@@ -64,7 +64,7 @@ void updateCache_stat(int kvcache, int blockcache, int hdd, double keycache_used
 		  prev_hdd_served = hdd_served;
 
 	      if(gap_total_served!=0){
-	    	  fprintf(stdout,"total: %8d kvcache: %2.2f %2.2f (%8d,%8d) blockcache: %2.2f %2.2f(%8d,%8d) hdd:%2.2f (%8d,%8d) time: %d\n",
+	    	  fprintf(stdout,"total: %8d kvcache: %2.2f %2.2f (%8d,%8d) blockcache: %2.2f %2.2f(%8d,%8d) disk:%2.2f (%8d,%8d) time: %d\n",
 	    		 total_served,
 				 (double)gap_kvcache_served/gap_total_served,kc_used,gap_kvcache_served,kvcache_served,
 				 (double)gap_blockcache_served/gap_total_served,bc_used,gap_blockcache_served,blockcache_served,

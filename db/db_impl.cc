@@ -176,7 +176,6 @@ DBImpl::~DBImpl() {
   delete tmp_batch_;
   delete log_;
   delete logfile_;
-  delete table_cache_;
 
 
   if (owns_info_log_) {
@@ -185,8 +184,8 @@ DBImpl::~DBImpl() {
   }
   if (owns_cache_) {
     delete options_.block_cache;
-
   }
+  delete table_cache_;
 
 
 }
@@ -262,7 +261,6 @@ void DBImpl::DeleteObsoleteFiles() {
           // Keep my manifest file, and any newer incarnations'
           // (in case there is a race that allows other incarnations)
           keep = (number >= versions_->ManifestFileNumber());
-          keep = true;
           break;
         case kTableFile:
           keep = (live.find(number) != live.end());
@@ -566,6 +564,79 @@ void DBImpl::RecordBackgroundError(const Status& s) {
   }
 }
 
+
+void DBImpl::RunCompactionBufferManager(){
+	//env_->Schedule();
+	env_->StartThread(&DBImpl::CBMBGWork,this);
+}
+
+void DBImpl::CBMBGWork(void *db){
+	  reinterpret_cast<DBImpl*>(db)->CompactionBufferManagerCall();
+};
+
+void DBImpl::CompactionBufferManagerCall(){
+
+	time_t begin[4], now,tmp;
+	uint64_t last_write = 0;
+	bool started = false;
+	while(true){
+		if(shutting_down_.Acquire_Load()){
+			break;
+		}else if(runtime::needWarmUp()&&!runtime::doneWarmUp()){
+			env_->SleepForMicroseconds(500000);
+		}else
+		{
+			if(!started){
+				started = true;
+				time(&tmp);
+				for(int i=1;i<4;i++){
+					begin[i] = tmp;
+				}
+			}
+			env_->SleepForMicroseconds(500000);
+
+			time(&now);
+			for(int i=1;i<4;i++){
+				if(now-begin[i]>runtime::compaction_buffer_management_interval[i]){
+					mutex_.Lock();
+					Version *current = this->versions_->current();
+					current->Ref();
+					bool evicted = current->MaybeEvictTail(i);
+					this->versions_->printCurVersion();
+					current->Unref();
+					mutex_.Unlock();
+
+					begin[i] = now;
+					if(evicted)
+						fprintf(stderr,"the tail of compaction buffer in level %d is evicted!\n",i);
+					else
+						fprintf(stderr,"the tail of compaction buffer in level %d is not evicted!\n",i);
+					if(i==1){
+						this->RefineCompactionBuffer();
+					}
+				}
+			}
+
+			//printf("hahahahahahahahah %ld\n",runtime::rwrandom_write_completed);
+		}
+	}
+
+}
+
+void DBImpl::RefineCompactionBuffer(){
+
+	mutex_.Lock();
+	Version *version = this->versions_->current();
+	for(int i=1;i<config::kNumLevels;i++){
+		printf("refine compaction buffer for level: %d\n",i);
+		version->RefineCompactionBuffer(i);
+	}
+	mutex_.Unlock();
+}
+
+
+
+
 void DBImpl::MaybeScheduleCompaction() {
   mutex_.AssertHeld();
   if (bg_compaction_scheduled_) {
@@ -586,6 +657,10 @@ void DBImpl::MaybeScheduleCompaction() {
   }
 }
 
+
+
+
+
 void DBImpl::BGWork(void* db) {
   reinterpret_cast<DBImpl*>(db)->BackgroundCall();
 }
@@ -597,7 +672,9 @@ void DBImpl::BackgroundCall() {
     // No more background work when shutting down.
   } else if (!bg_error_.ok()) {
     // No more background work after a background error.
-  } else {
+  } else if(runtime::needWarmUp()&&!runtime::doneWarmUp()){
+		//wait for warming up
+  }else {
     BackgroundCompaction();
   }
 
@@ -648,7 +725,26 @@ void DBImpl::BackgroundCompaction() {
         status.ToString().c_str());*/
   } else if(c->IsLevelNeedsMove()){//batch merge
 	  //teng: level move step for batch merge
+
 	  	status = versions_->MoveLevelDown(c->level(), &mutex_);
+//	  	versions_->second_chance_[c->level()] = true;
+//	    fprintf(stderr,"\n\n\n%d %ld\n\n\n",c->level()+1,versions_->num_hot_files_deleted_[c->level()+1]);
+//		if(versions_->num_hot_files_deleted_[c->level()+1]==0)
+//		{
+//			if(!versions_->second_chance_[c->level()+1]){
+//				runtime::mtx_vset_.Lock();
+//				versions_->current()->MarkTailEvictable(c->level()+1);
+//				runtime::mtx_vset_.Unlock();
+//				fprintf(stderr,"\n\n\nit is marked!\n\n\n");
+//				versions_->second_chance_[c->level()+1] = true;
+//			}else{
+//				versions_->second_chance_[c->level()+1] = false;
+//				fprintf(stderr,"\n\n\ngive you a second chance!\n\n\n");
+//			}
+//		}else{
+//			versions_->second_chance_[c->level()+1] = true;
+//		}
+//		versions_->num_hot_files_deleted_[c->level()+1] = 0;
 	  	if (!status.ok()) {
 	  		RecordBackgroundError(status);
 	  	}
@@ -658,6 +754,7 @@ void DBImpl::BackgroundCompaction() {
 	  		c->level(),	c->level() + 1,
 	  		status.ToString().c_str());*/
 	  	DeleteObsoleteFiles();
+
   }else {//internal rolling merge
     CompactionState* compact = new CompactionState(c);
     status = DoCompactionWork(compact);
@@ -826,33 +923,32 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   mutex_.Unlock();
 
   //TODO:
-  /* teng: check the entire block cache to see if some of the blocks will be
-   * evicted from the block cache after this round of compaction,
-   * pre-caching the blocks covered by those key ranges
-   *
-   * */
-  size_t cached_block_number = 0;
-  std::vector<std::vector<Slice*>> cachedRanges;
-  int levelsize = 2;
-  bool needsCache = runtime::pre_caching&&options_.block_cache&&compact->compaction->level()!=0;
+    /* teng: check the entire block cache to see if some of the blocks will be
+     * evicted from the block cache after this round of compaction,
+     * pre-caching the blocks covered by those key ranges
+     *
+     * */
+    size_t cached_block_number = 0;
+    std::vector<std::vector<Slice*>> cachedRanges;
+    int levelsize = 2;
 
-  if(needsCache)
-  {
-	  Compaction *compactinfo = compact->compaction;
-	  Cache *block_cache = options_.block_cache;
-	  for(int i=0;i<levelsize;i++){
-		 std::vector<Slice *> tempcr;
-		 for(int j=0;j<compactinfo->num_input_files(i);j++){
-			 FileMetaData *file = compactinfo->input(i,j);
-			 Table * table;
-			 this->table_cache_->GetTable(file->number,file->file_size,&table);
-			 if(table){
-			  table->GetKeyRangeCached(&tempcr);
-			 }
-		 }
-		 cachedRanges.push_back(tempcr);
-	  }
-  }
+    if(runtime::pre_caching&&options_.block_cache)
+    {
+  	  Compaction *compactinfo = compact->compaction;
+  	  Cache *block_cache = options_.block_cache;
+  	  for(int i=0;i<levelsize;i++){
+  		 std::vector<Slice *> tempcr;
+  		 for(int j=0;j<compactinfo->num_input_files(i);j++){
+  			 FileMetaData *file = compactinfo->input(i,j);
+  			 Table * table;
+  			 this->table_cache_->GetTable(file->number,file->file_size,&table);
+  			 if(table){
+  			  table->GetKeyRangeCached(&tempcr);
+  			 }
+  		 }
+  		 cachedRanges.push_back(tempcr);
+  	  }
+    }
 
   //
   Iterator* input = versions_->MakeInputIterator(compact->compaction);
@@ -928,11 +1024,9 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
         if (!status.ok()) {
           break;
         }
-        if(needsCache){
-            compact->builder->cachedRanges = &cachedRanges;
-            compact->builder->rangeCursor[0] = 0;
-            compact->builder->rangeCursor[1] = 0;
-        }
+        compact->builder->cachedRanges = &cachedRanges;
+        compact->builder->rangeCursor[0] = 0;
+        compact->builder->rangeCursor[1] = 0;
 
 
       }
@@ -946,7 +1040,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
       if (compact->builder->FileSize() >=
           compact->compaction->MaxOutputFileSize()) {
 
-        cached_block_number += compact->builder->cached_block_number;
+    	cached_block_number += compact->builder->cached_block_number;
         status = FinishCompactionOutputFile(compact, input);
         if (!status.ok()) {
           break;
@@ -991,7 +1085,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
     RecordBackgroundError(status);
   }
   //TODO change for pre-caching, disabled for SM mode
-  if(needsCache){
+  if(runtime::pre_caching&&options_.block_cache){
 	 printf("pre-caching: %ld %ld %f\n",cachedRanges[0].size()+cachedRanges[1].size(),cached_block_number,options_.block_cache->Percent());
 	 for(int i=0;i<cachedRanges.size();i++)
 		 for(int j=0;j<cachedRanges[i].size();j++){
@@ -1115,11 +1209,11 @@ Status DBImpl::Get(const ReadOptions& options,
 
   MemTable* mem = mem_;
   MemTable* imm = imm_;
-  Version* current;
-  current = versions_->current();
+  Version* current = versions_->current();
+  current->Ref();
   mem->Ref();
   if (imm != NULL) imm->Ref();
-  current->Ref();
+
 
   Version::GetStats stats;
 
@@ -1158,6 +1252,7 @@ int DBImpl::RangeQuery(const ReadOptions& options,const Slice &start,const Slice
 {
    int count = 0;
    Version::GetStats stats;
+   MutexLock l(&mutex_);
    SequenceNumber snapshot;
    if (options.snapshot != NULL) {
       snapshot = reinterpret_cast<const SnapshotImpl*>(options.snapshot)->number_;
@@ -1168,7 +1263,9 @@ int DBImpl::RangeQuery(const ReadOptions& options,const Slice &start,const Slice
    LookupKey lend(end, snapshot);
    Version* current = versions_->current();
    current->Ref();
+   mutex_.Unlock();
    count = current->RangeQuery(options, lstart, lend);
+   mutex_.Lock();
    current->Unref();
    return count;
 }
@@ -1435,6 +1532,10 @@ Status DB::Open(const Options& options, const std::string& dbname,
     if (s.ok()) {
       impl->DeleteObsoleteFiles();
       impl->MaybeScheduleCompaction();
+      if(config::manage_compaction_buffer){
+          impl->RunCompactionBufferManager();
+
+      }
     }
   }
   impl->mutex_.Unlock();

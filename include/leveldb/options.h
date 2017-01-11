@@ -154,6 +154,8 @@ struct ReadOptions {
   // Default: true
   bool fill_cache;
 
+  bool range_query_;
+
   // If "snapshot" is non-NULL, read as of the supplied snapshot
   // (which must belong to the DB that is being read and which must
   // not have been released).  If "snapshot" is NULL, use an impliicit
@@ -164,6 +166,7 @@ struct ReadOptions {
   ReadOptions()
       : verify_checksums(false),
         fill_cache(true),
+        range_query_(false),
         snapshot(NULL) {
   }
 };

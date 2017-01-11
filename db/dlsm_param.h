@@ -1,6 +1,9 @@
 #ifndef DLSM_PARAM_H
 #define DLSM_PARAM_H
 #include <unistd.h>
+#include <memory>
+#include "util/mutexlock.h"
+
 /************************** Constants *****************************/
 #define BLKSIZE 4096
 /************************** Configuration *****************************/
@@ -8,7 +11,6 @@
 namespace leveldb {
 
 namespace config {
-
 
 // Level-0 compaction is started when we hit this many files.
 static const int kL0_CompactionTrigger = 50;
@@ -22,6 +24,9 @@ static const double kL0_StopWritesTrigger = 1.2;
 // Approximate gap in bytes between samples of data read during iteration.
 static const int kReadBytesPeriod = 1048576;
 
+
+extern uint64_t hot_file_threshold;
+extern bool preload_metadata;
 extern const char *db_path;
 
 //teng: target file size, default 2 MB
@@ -39,14 +44,16 @@ extern int bloom_bits_use;
 
 extern int key_cache_size;
 
+extern uint64_t num_blocks_cached_threshold;
+
 
 //we set it
 const static int kNumLevels = 4;
 const static int size_ratio = 10;
 
-
-extern int compaction_buffer_length[];
-extern int compaction_buffer_use_length[];
+extern int files_merged_each_round;
+extern bool manage_compaction_buffer;
+extern double level0_max_score;
 
 /*
  * Bloom Filter
@@ -64,6 +71,14 @@ inline size_t get_bloom_filter_probe_num (int bits_per_key) {
 
 namespace runtime {
 
+
+extern int compaction_buffer_length[];
+extern int compaction_buffer_use_length[];
+extern int compaction_buffer_management_interval[];
+
+
+extern uint64_t num_reads_;
+extern uint64_t num_writes_;
 extern double compaction_min_score;
 
 //0 not started, 1 warmup started, 2 warmup done
@@ -87,8 +102,9 @@ extern bool print_compaction_buffer;
 extern bool print_dash;
 extern int hitratio_interval;
 extern int max_print_level;
-
 extern bool pre_caching;
+
+extern uint64_t write_cursor;
 
 } // runtime
 

@@ -8,6 +8,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "leveldb/iterator.h"
+#include "leveldb/table.h"
 
 namespace leveldb {
 
@@ -19,6 +20,7 @@ class Block {
   // Initialize the block with the specified contents.
   //explicit
   Block(const BlockContents& contents);
+  Block(const BlockContents& contents, Table *table);
 
   ~Block();
 

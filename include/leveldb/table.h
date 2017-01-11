@@ -8,9 +8,12 @@
 #include <stdint.h>
 #include "leveldb/iterator.h"
 #include <vector>
+#include "../db/dlsm_param.h"
 
 
 namespace leveldb {
+
+
 
 class Block;
 class BlockHandle;
@@ -38,7 +41,7 @@ class Table {
   //
   // *file must remain live while this Table is in use.
   static Status Open(const Options& options,
-		             int filenumber,
+		             uint64_t filenumber,
                      RandomAccessFile* file,
                      uint64_t file_size,
                      Table** table);
@@ -61,12 +64,36 @@ class Table {
   Status EvictBlockCache();
 
   Status GetKeyRangeCached(std::vector<Slice *> *result);
+  void IncVisitedNum(){
+	  num_visited_++;;
+  }
 
+  void ClearVisitedNum(){
+	  num_visited_ = 0;
+	  num_read_ = runtime::num_reads_;
+  }
+  uint64_t GetVistedNum(){
+	  return num_visited_;
+  }
+  bool isHot(){
+	  uint64_t gap = runtime::num_reads_-num_read_;
+	  if(num_visited_==0){
+		  return false;
+	  }
+	  if(gap<config::hot_file_threshold){
+		  return true;
+	  }
+	  return gap/num_visited_ <= config::hot_file_threshold;
+  };
  private:
+
+
+  uint64_t num_visited_;
+  uint64_t num_read_;
   struct Rep;
   Rep* rep_;
 
-  explicit Table(Rep* rep) { rep_ = rep; }
+  explicit Table(Rep* rep) { rep_ = rep; num_visited_ = 0;num_read_=0;}
   static Iterator* BlockReader(void*, const ReadOptions&, const Slice&);
 
   // Calls (*handle_result)(arg, ...) with the entry found after a call

@@ -23,12 +23,13 @@ enum SortedTableType{
 };
 struct FileMetaData {
   int refs;
+  bool visible;//is it visible in compaction buffer
   uint64_t number;
   uint64_t file_size;         // File size in bytes
   InternalKey smallest;       // Smallest internal key served by table
   InternalKey largest;        // Largest internal key served by table
 
-  FileMetaData() : refs(0), file_size(0), number(0){ }
+  FileMetaData() : refs(0), file_size(0), number(0), visible(true){ }
 };
 
 class VersionEdit {
@@ -45,6 +46,16 @@ class VersionEdit {
 	  edit->SetPrevLogNumber(prev_log_number_);
   }
 
+  bool GetRefineCB(){
+	  return refineCB;
+  }
+  int GetRefineLevel(){
+	  return refineLevel;
+  }
+  void EnableRefineCB(bool enable,int level){
+	 refineCB = enable;
+	 refineLevel = level;
+  }
   void SetComparatorName(const Slice& name) {
     has_comparator_ = true;
     comparator_ = name.ToString();
@@ -66,6 +77,10 @@ class VersionEdit {
     last_sequence_ = seq;
   }
 
+  std::vector<std::pair<int, FileMetaData>>* GetNewFiles(){
+	  return new_files_;
+  }
+
   // Add the specified file at the specified number.
   // REQUIRES: This version has not been saved (see VersionSet::SaveTo)
   // REQUIRES: "smallest" and "largest" are smallest and largest keys in file
@@ -78,6 +93,7 @@ class VersionEdit {
     f.file_size = file_size;
     f.smallest = smallest;
     f.largest = largest;
+    f.visible = true;
     new_files_[type].push_back(std::make_pair(level, f));
   }
 
@@ -112,6 +128,8 @@ class VersionEdit {
   bool has_next_file_number_;
   bool has_last_sequence_;
 
+  bool refineCB;
+  int refineLevel;
   DeletedFileSet deleted_files_[3];
   std::vector< std::pair<int, FileMetaData> > new_files_[3];
 };

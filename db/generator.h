@@ -32,6 +32,20 @@
  * An expression that generates a sequence of string values, following some distribution (Uniform, Zipfian, Sequential, etc.)
  */
 namespace generator{
+static inline void shuffle(uint64_t a[], uint64_t n)
+{
+    uint64_t index, tmp, i;
+    srand(315);
+
+    for(i=n-1; i>0; i--)
+    {
+        index=rand()%i;
+        tmp=a[i];
+        a[i]=a[index];
+        a[index]=tmp;
+    }
+
+}
 
 static inline long long YCSBKey_hash(long long val)
 {

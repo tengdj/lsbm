@@ -83,6 +83,7 @@ class DB {
   virtual Status Get(const ReadOptions& options,
                      const Slice& key, std::string* value) = 0;
 
+  virtual void RefineCompactionBuffer() = 0;
   virtual void UpdateKeyCache(const Slice &key, const Slice &value) = 0;
   //teng: get range
   virtual int RangeQuery(const ReadOptions& options,

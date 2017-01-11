@@ -27,23 +27,24 @@ struct Table::Rep {
   ~Rep() {
     delete filter;
     delete [] filter_data;
+    //printf("rep: %ld\n",this->filenumber);
     delete index_block;
   }
 
   Options options;
   Status status;
   RandomAccessFile* file;
-  int filenumber;
+  uint64_t filenumber;
   uint64_t cache_id;
   FilterBlockReader* filter;
   const char* filter_data;
 
+
   BlockHandle metaindex_handle;  // Handle to metaindex_block: saved from footer
   Block* index_block;
 };
-
 Status Table::Open(const Options& options,
-		           int filenumber,
+		           uint64_t filenumber,
                    RandomAccessFile* file,
                    uint64_t size,
                    Table** table) {
@@ -142,6 +143,13 @@ void Table::ReadFilter(const Slice& filter_handle_value) {
 }
 
 Table::~Table() {
+//  if(this->num_blocks_cached!=0){
+//	  exit(0);
+//  }
+  //printf("%ld\n",this->num_blocks_cached);
+
+  Status s = this->EvictBlockCache();
+  assert(s.ok());
   delete rep_;
 }
 
@@ -215,6 +223,7 @@ Iterator* Table::BlockReader(void* arg,
        block = NULL;
 
        if(cache_handle!=NULL){//error block got from memory
+
           block_cache->Release(cache_handle);
           block_cache->Erase(key);
           cache_handle = NULL;
@@ -242,6 +251,7 @@ Iterator* Table::BlockReader(void* arg,
       if (block_cache != NULL) {
       //always insert into block_cache if missed
         if (cache_handle == NULL) {
+          //when one block is inserted into the block cache, increase the counter of this file
           cache_handle = block_cache->Insert(key, block, block->size(), &DeleteCachedBlock);
    	    }
       }
@@ -267,8 +277,15 @@ Iterator* Table::BlockReader(void* arg,
   if(block_cache){
 	  blockcache_used = (double)block_cache->Used()/block_cache->getCapacity();
   }
-  if(!runtime::isWarmingUp()&&options.fill_cache)
-  leveldb::updateCache_stat(0,block_cache_served,hdd_served,0,blockcache_used);
+
+  if(!runtime::isWarmingUp()&&options.fill_cache){
+	  leveldb::updateCache_stat(0,block_cache_served,hdd_served,0,blockcache_used);
+  }
+
+  if(options.fill_cache){
+	  table->IncVisitedNum();
+	  runtime::num_reads_++;
+  }
 
   return iter;
 }
@@ -293,7 +310,8 @@ Status Table::InternalGet(const ReadOptions& options, const Slice& k,
         handle.DecodeFrom(&handle_value).ok() &&
         !filter->KeyMayMatch(handle.offset(), k)) {
       // Not found
-    } else {
+    } else
+    {
       Iterator* block_iter = BlockReader(this, options, iiter->value());
       block_iter->Seek(k);
       if (block_iter->Valid()) {
@@ -315,12 +333,12 @@ Status Table::EvictBlockCache(){
 	Status s;
 
 	Iterator* iiter = rep_->index_block->NewIterator(rep_->options.comparator);
-	Cache *memcache = rep_->options.block_cache;
-	if(!memcache){
+	Cache *block_cache = rep_->options.block_cache;
+	if(!block_cache){
 		return Status::OK();
 	}
 	uint64_t before, after;
-	before = memcache->Used();
+	before = block_cache->Used();
 
 	iiter->SeekToFirst();
 
@@ -333,7 +351,7 @@ Status Table::EvictBlockCache(){
 	        EncodeFixed64(cache_key_buffer, rep_->filenumber);
 	        EncodeFixed64(cache_key_buffer+8, handle.offset());
 	        Slice key(cache_key_buffer, sizeof(cache_key_buffer));
-	        memcache->Erase(key);
+	        block_cache->Erase(key);
 	    }
 	    iiter->Next();
 	}
@@ -341,10 +359,10 @@ Status Table::EvictBlockCache(){
 	    s = iiter->status();
 	}
     delete iiter;
-    after = memcache->Used();
+    after = block_cache->Used();
 
     if(false&&before>after){
-      printf("evicted file: %d, before %ld and after: %ld\n",rep_->filenumber,before/rep_->options.block_size,after/rep_->options.block_size);
+      printf("evicted file: %ld, before %ld and after: %ld\n",rep_->filenumber,before/rep_->options.block_size,after/rep_->options.block_size);
     }
 	return s;
 }

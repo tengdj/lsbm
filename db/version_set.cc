@@ -326,7 +326,7 @@ void Version::NewSortedTable(int level, SortedTableType type){
 		  do{
 			 listlength++;
 			 cur = cur->next;
-		  }while(cur!=head&&listlength<=config::compaction_buffer_length[level]);
+		  }while(cur!=head&&listlength<=runtime::compaction_buffer_length[level]);
 
 		  //detach all after
 		  SortedTable *next;
@@ -407,7 +407,9 @@ Status Version::Get(const ReadOptions& options,
 		            return s;
 		        }
 		      }
-		}else if(type==DELETION_PART && level>0 && config::compaction_buffer_use_length[level]>0){
+
+		}else if(type==DELETION_PART && level>0
+				&& !levels_[level][COMPACTION_BUFFER]->next->obsolete&&levels_[level][COMPACTION_BUFFER]->next->files_.size()>0){
 			//if the compaction buffer list is set to empty, deletion part should be checked
 			//skip otherwise
 			continue;
@@ -418,46 +420,58 @@ Status Version::Get(const ReadOptions& options,
 
 			int tablechecked = 0;
 			do{
-				//limit the number of sorted tables checked in compaction buffer(for test only)
-				if(type==COMPACTION_BUFFER && tablechecked++>=config::compaction_buffer_use_length[level]){
-					break;
-				}
-				// Binary search to find earliest index whose largest key >= ikey.
-				uint32_t index = FindFile(vset_->icmp_, cur->files_, ikey);
-				if (index < cur->files_.size()) {
-					//find!
-					FileMetaData* f = cur->files_[index];
-					if (ucmp->Compare(user_key, f->smallest.user_key())>=0) {
-						Saver saver;
-				        saver.state = kNotFound;
-				        saver.ucmp = ucmp;
-				        saver.user_key = user_key;
-				        saver.value = value;
-				        s = vset_->table_cache_->Get(options, f->number, f->file_size,
-				                                     ikey, &saver, SaveValue);
-				        if (!s.ok()) {
-				        	return s;
+				if(!cur->obsolete)
+				{
+					//limit the number of sorted tables checked in compaction buffer(for test only)
+	//				if(type==COMPACTION_BUFFER && tablechecked++>=runtime::compaction_buffer_length[level]){
+	//					break;
+	//				}
+					// Binary search to find earliest index whose largest key >= ikey.
+					uint32_t index = FindFile(vset_->icmp_, cur->files_, ikey);
+
+					if (index < cur->files_.size()) {
+
+						//find!
+						FileMetaData* f = cur->files_[index];
+						if(type==COMPACTION_BUFFER&&!f->visible){//this file in the compaction buffer is not visible
+							cur = cur->next;
+							continue;
 						}
-						switch (saver.state) {
-						case kNotFound:
-						     break;      // Keep searching in other files
-						case kFound:
-				        	 //printf("find in %d part of level %d\n",type,level);
-						     return s;
-						case kDeleted:
-						     s = Status::NotFound(Slice());  // Use empty error message for speed
-						     return s;
-						case kCorrupt:
-						     s = Status::Corruption("corrupted key for ", user_key);
-						     return s;
+						if (ucmp->Compare(user_key, f->smallest.user_key())>=0) {
+							Saver saver;
+							saver.state = kNotFound;
+							saver.ucmp = ucmp;
+							saver.user_key = user_key;
+							saver.value = value;
+							s = vset_->table_cache_->Get(options, f->number, f->file_size,
+														 ikey, &saver, SaveValue);
+							if (!s.ok()) {
+								return s;
+							}
+							switch (saver.state) {
+							case kNotFound:
+								 break;      // Keep searching in other files
+							case kFound:
+								 // printf("end3\n");
+
+								 return s;
+							case kDeleted:
+								 s = Status::NotFound(Slice());  // Use empty error message for speed
+								 return s;
+							case kCorrupt:
+								 s = Status::Corruption("corrupted key for ", user_key);
+								 return s;
+							}
 						}
 					}
 				}
+
 				cur = cur->next;
 			}while(cur!=head);
 		}//cases if
 	}//part for
   }//level for
+
   return Status::NotFound(Slice());  // Use an empty error message for speed
 }
 
@@ -517,69 +531,119 @@ int Version::RangeQuery(const ReadOptions& options,
   Slice end = lkend.user_key();
   const Comparator* ucmp = vset_->icmp_.user_comparator();
 
+  ReadOptions cboption = options;
+  cboption.fill_cache = true;
+  cboption.range_query_ = true;
   std::vector<FileMetaData*> tmp;
+  int found = 0;
+  int filecount = 0;
+  leveldb::Options tmpopt;
   //ignore level 0
   for (int level = 1; level < level_num_; level++) {
 
-	if(levels_[level][DELETION_PART]!=NULL){
-		size_t num_files = levels_[level][DELETION_PART]->files_.size();
-		if (num_files != 0){
-			// Get the list of files to search in this part
-			FileMetaData* const* files = &levels_[level][DELETION_PART]->files_[0];
-			for (uint32_t i = 0; i < num_files; i++) {
-				FileMetaData* f = files[i];
-				if (ucmp->Compare(end, f->smallest.user_key()) >= 0&&ucmp->Compare(start, f->largest.user_key()) <= 0){
-					tmp.push_back(f);
-				}
-			}
-		}
-	}
-	if(levels_[level][INSERTION_PART]!=NULL){
-			size_t num_files = levels_[level][INSERTION_PART]->files_.size();
+	  SortedTable *head = levels_[level][COMPACTION_BUFFER];
+	  SortedTable *cur = head;
+	  bool findinCB = false;
+
+	  do{
+		if(!cur->obsolete&&!cur->evictable)
+		{
+			size_t num_files = cur->files_.size();
 			if (num_files != 0){
 				// Get the list of files to search in this part
-				FileMetaData* const* files = &levels_[level][INSERTION_PART]->files_[0];
+				FileMetaData* const* files = &cur->files_[0];
 				for (uint32_t i = 0; i < num_files; i++) {
 					FileMetaData* f = files[i];
-					if (ucmp->Compare(end, f->smallest.user_key()) >= 0&&ucmp->Compare(start, f->largest.user_key()) <= 0){
+					if (f->visible&&ucmp->Compare(end, f->smallest.user_key()) >= 0&&ucmp->Compare(start, f->largest.user_key()) <= 0){
 						tmp.push_back(f);
+						findinCB = true;
 					}
 				}
 			}
-	}
+		}
+		cur = cur->next;
+	 }while(cur!=head);
 
-  }
-  int found = 0;
+	 if(tmp.size()==0||!findinCB){
+		 tmp.clear();
+		 if(levels_[level][DELETION_PART]!=NULL){
+		 		size_t num_files = levels_[level][DELETION_PART]->files_.size();
+		 		if (num_files != 0){
+		 			// Get the list of files to search in this part
+		 			FileMetaData* const* files = &levels_[level][DELETION_PART]->files_[0];
+		 			for (uint32_t i = 0; i < num_files; i++) {
+		 				FileMetaData* f = files[i];
+		 				if (ucmp->Compare(end, f->smallest.user_key()) >= 0&&ucmp->Compare(start, f->largest.user_key()) <= 0){
+		 					tmp.push_back(f);
+		 				}
+		 			}
+		 		}
+		 	}
+		 	if(levels_[level][INSERTION_PART]!=NULL){
+		 			size_t num_files = levels_[level][INSERTION_PART]->files_.size();
+		 			if (num_files != 0){
+		 				// Get the list of files to search in this part
+		 				FileMetaData* const* files = &levels_[level][INSERTION_PART]->files_[0];
+		 				for (uint32_t i = 0; i < num_files; i++) {
+		 					FileMetaData* f = files[i];
+		 					if (ucmp->Compare(end, f->smallest.user_key()) >= 0&&ucmp->Compare(start, f->largest.user_key()) <= 0){
+		 						tmp.push_back(f);
+		 					}
+		 				}
+		 			}
+		 	}
+	 }
 
-  leveldb::Options tmpopt;
-  for(int i=0;i<tmp.size();i++)
-  {
-	  FileMetaData* f = tmp[i];
-	  Table *table;
-	  vset_->table_cache_->GetTable(f->number,f->file_size,&table);
+	   for(int i=0;i<tmp.size();i++)
+	   {
+	 	  FileMetaData* f = tmp[i];
+	 	  Table *table;
+	 	  vset_->table_cache_->GetTable(f->number,f->file_size,&table);
 
-	  Iterator* iter = table->NewIterator(options);
-	  iter->SeekToFirst();
-	  //iter->Seek(start)
-	  for (; iter->Valid(); iter->Next()) {
-		  if(tmpopt.comparator->Compare(iter->key(), start) < 0){
-		  	 continue;
-		  }
-		  if(tmpopt.comparator->Compare(iter->key(), end) > 0){
-			  break;
-		  }
-	      found++;
+	 	  Iterator* iter;
+	 	  if(findinCB){
+	 		  iter = table->NewIterator(cboption);
+	 	  }else{
+	 		  iter = table->NewIterator(options);
+
+	 	  }
+ 		  //iter = table->NewIterator(cboption);
+
+	 	  //iter->SeekToFirst();
+	 	  iter->Seek(lkstart.internal_key());
+	 	  bool hasone = false;
+	 	  if(iter->Valid()){
+	 		  for (; iter->Valid(); iter->Next()) {
+	 			  found++;
+
+	 			  if(ucmp->Compare(iter->key(), start) < 0){
+	 				 continue;
+	 			  }
+	 			  if(tmpopt.comparator->Compare(iter->key(), end) > 0){
+	 				  break;
+	 			  }
+	 			  hasone = true;
+	 		   }
+ 			  filecount++;
+
+
+	 		   Status s = iter->status();
+	 		   if (!s.ok()) {
+	 				printf("iterator error: %s\n", s.ToString().c_str());
+	 		   }
+	 	  }
+
+	 	  delete iter;
 	   }
 
-	   Status s = iter->status();
-	   if (!s.ok()) {
-	        printf("iterator error: %s\n", s.ToString().c_str());
-	   }
-	   delete iter;
+	  //printf("%d files are checked, %d records are found\n",filecount,found);
+	   tmp.clear();
+
+
   }
 
-  //printf("%s %s %ld files are checked, %d records are found\n",start.ToString().c_str(),end.ToString().c_str(),tmp.size(),found);
-  tmp.clear();
+
+
 
   return found;
 }
@@ -643,6 +707,110 @@ void Version::GetOverlappingInputs(
   }
 }
 
+void Version::RefineCompactionBuffer(const int level){
+	if(!config::manage_compaction_buffer)
+	return;
+
+	uint64_t cursor[40];
+	SortedTable *head = levels_[level][COMPACTION_BUFFER];
+	SortedTable *tail = head->prev;//start from the tail
+
+	SortedTable *cur = tail;//start from the tail
+	//leave the first few sorted tables serving read for a while
+	int counter = 0;
+	while(cur!=head){//keep all files of the head in compaction buffer for a while
+//		if(level>2){
+//			if(cur==head){
+//				break;
+//			}
+//		}else{
+//			if(cur==head->next||cur==head){
+//				break;
+//			}
+//
+//		}
+		counter++;
+//		if(level==2){
+//			 printf("%d %ld\n",counter,cur->files_.size());
+//	    }
+		if(cur->secondchance){
+			cur->secondchance = false;
+		}else
+		for(int i=0;i<cur->files_.size();i++){
+
+			FileMetaData *f = cur->files_[i];
+			if(!f->visible){
+				continue;
+			}
+
+			 for(int j=0;j<40;j++){
+				cursor[j] = 0;
+			 }
+			 Table * table = NULL;
+			 int num = f->number;
+			 vset_->table_cache_->GetTable(f->number,f->file_size,&table);
+			 bool visible = false;
+			 if(table == NULL){//never be visited
+
+			 }else if(table->isHot()){//a hot file
+				 //printf("%10ld %10ld\n", f->number,table->GetVistedNum());
+				 visible = true;
+				 //printf("added because hot\n");
+			 }
+			 else if(cur==head->next){//overlap with older file in the compaction buffer
+				 SortedTable *cur_temp = head->prev;//start from the tail
+				 int cblevel = 0;
+				 while(cur_temp!=cur&&!visible){
+					 leveldb::FileMetaData* const* cbfiles = &cur_temp->files_[0];
+					 const Comparator* user_cmp = vset_->icmp_.user_comparator();
+					 for (; cursor[cblevel] < cur_temp->files_.size(); ) {
+
+					   FileMetaData* cbf = cbfiles[cursor[cblevel]];
+					   if(!cbf->visible){//skip invisible files
+							cursor[cblevel]++;
+							continue;
+					   }
+					   const Slice cbfstart = cbf->smallest.user_key();
+					   const Slice cbflimit = cbf->largest.user_key();
+					   const Slice fstart = f->smallest.user_key();
+					   const Slice flimit = f->largest.user_key();
+
+					   //printf(" %d %s %s %s %s ",cblevel,cbfstart.ToString().c_str(),cbflimit.ToString().c_str(),fstart.ToString().c_str(),flimit.ToString().c_str());
+					   if(user_cmp->Compare(fstart,cbflimit)>0){
+						   //printf(" hehe1\n");
+						   cursor[cblevel]++;
+					   }else if(user_cmp->Compare(flimit,cbfstart)<0){
+						   //printf(" hehe2\n");
+						   break;
+					   }else{//overlap
+						   //printf(" hehe3\n");
+						   visible = true;
+						   //printf("added because overlap\n");
+						   break;
+					   }
+
+					 }
+					 cblevel++;
+					 cur_temp = cur_temp->prev;
+					 //printf("cblevel: %d\n",cblevel);
+				 }
+			 }
+			 f->visible = visible;
+			 if(!f->visible){
+				 //vset_->table_cache_->Evict(f->number,f->file_size);
+			 }
+			 table->ClearVisitedNum();
+
+			 //printf("%d\n",visible);
+		}
+//		if(cur->NumVisibleFiles()==0){
+//			cur->evictable = true;
+//		}
+		cur = cur->prev;
+		//printf("\n");
+	}
+
+}
 
 uint64_t Version::TotalLevelSize(int level){
 
@@ -666,23 +834,24 @@ uint64_t Version::TotalPartSize(int level, SortedTableType type){
 void Version::printVersion(){
 
 	  fprintf(stderr,"---------------------------------------------------------------------------\n");
-
+	  fprintf(stderr,"table cache usage:%2.3f\n", this->vset_->table_cache_->Usage());
 	  //int max = config::kNumLevels-1;
 	  int max = runtime::max_print_level;
-	  for(;max>=0;max--){
-	  	    	if(levels_[max][DELETION_PART]->files_.size()+levels_[max][INSERTION_PART]->files_.size()!=0)
-	  	    		break;
+	  for(;max>=0;max--){//last level contains files
+	  	   if(levels_[max][DELETION_PART]->files_.size()+levels_[max][INSERTION_PART]->files_.size()!=0){
+	  		   break;
+	  	   }
 	  }
 
 	  int counter = 0;
-	  for(int i=0;i<=max;i++){
-	      if(this->NumFiles(i)+this->NumPartFiles(i,COMPACTION_BUFFER)==0)continue;
+	  for(int level=0;level<=max;level++){
+	      if(this->NumFiles(level)+this->NumPartFiles(level,COMPACTION_BUFFER)==0)continue;
 	      	/*if(runtime::two_phase_compaction&&llevel!=0){
 	      		llevel = (llevel-1)/2+1;
 	      	}*/
-	      	fprintf(stderr,"level:%d\n",i);
+	      	fprintf(stderr,"level:%d\n",level);
 	      	fprintf(stderr,"deletion part: ");
-	      	SortedTable *head = levels_[i][DELETION_PART];
+	      	SortedTable *head = levels_[level][DELETION_PART];
 	      	SortedTable *cur = head;
 	      	counter = 0;
 	      	do{
@@ -690,48 +859,68 @@ void Version::printVersion(){
 	      		for(int j=0;j<cur->files_.size();j++){
 	      			if(!runtime::print_dash){
 	      				fprintf(stderr,"%ld ",cur->files_[j]->number);
-	      			}else if(j%5==0){
-	      				fprintf(stderr,"-");
-	      			}
+	      			}else if(level==0||j%((int)pow(10,(level-1)))==0){
+					    fprintf(stderr,"-");
+					}
+
 	      		}
 	      		cur = cur->next;
 	      	}while(cur!=head);
 	        fprintf(stderr,"\n");
 	        fprintf(stderr,"insertion part: ");
-	      	head = levels_[i][INSERTION_PART];
+	      	head = levels_[level][INSERTION_PART];
 	      	cur = head;
 	      	counter = 0;
 
 	      	do{
 		        fprintf(stderr,"\n\t%2d(%5ld files)| ",counter++,cur->files_.size());
 	      		for(int j=0;j<cur->files_.size();j++){
+
 	      			if(!runtime::print_dash){
 	      			     fprintf(stderr,"%ld ",cur->files_[j]->number);
-	      			}else if(j%5==0){
-	      			     fprintf(stderr,"-");
-	      			}
+	      			}else if(level==0||j%((int)pow(10,(level-1)))==0){
+					    fprintf(stderr,"-");
+					}
 	      		}
 	      		cur = cur->next;
 	      	}while(cur!=head);
 	        fprintf(stderr,"\n");
-	        if(!runtime::print_compaction_buffer||i==0)continue;
+	        if(!runtime::print_compaction_buffer||level==0)continue;
 
 	        fprintf(stderr,"compaction buffer: ");
-	        head = levels_[i][COMPACTION_BUFFER];
+	        head = levels_[level][COMPACTION_BUFFER];
 	        cur = head;
 	      	counter = 0;
 
+	      	//fprintf(stderr,"\n");;
 	        do{
-		        fprintf(stderr,"\n\t%2d(%5ld files)| ",counter++,cur->files_.size());
-	        	for(int j=0;j<cur->files_.size();j++){
-	        		  if(!runtime::print_dash){
-	        		      	fprintf(stderr,"%ld ",cur->files_[j]->number);
-	        		  }else if(j%5==0){
-	        		      	fprintf(stderr,"-");
-	        		  }
+	        	if(!cur->obsolete)
+	        	{
+
+					uint64_t num = cur->NumVisibleFiles();
+					if(num!=0)
+					{
+						int count = 0;
+						fprintf(stderr,"\n\t%2d(%5ld files)| ",counter,num);
+						for(int j=0;j<cur->files_.size();j++){
+							if(cur->files_[j]->visible)
+							{
+							  if(!runtime::print_dash){
+									fprintf(stderr,"%ld ",cur->files_[j]->number);
+							  }else if(level==0||j%((int)pow(10,(level-1)))==0){
+								    fprintf(stderr,"-");
+								}
+							  count++;
+							}
+						}
+						if(cur->evictable){
+							fprintf(stderr,"* evictable");
+						}
+					}
+					counter++;
 	        	}
 	        	cur = cur->next;
-	       	}while(cur!=head&&counter<=config::compaction_buffer_use_length[i]);
+	       	}while(cur!=head);
 	        fprintf(stderr,"\n");
 	  }
 }
@@ -832,20 +1021,31 @@ void SaveTo(Version* v) {
 	  // another insert list start from the last
 	  SortedTable *curtable = base_->levels_[level][type]->prev;//set to the tail of the list
 
+	  bool started = false;
 	  while(curtable!=base_->levels_[level][type]){//for all sorted tables except the head one,
 
-		  // Drop any deleted files.  Store the result in *v.
-		  const std::vector<FileMetaData*>& base_files = curtable->files_;
-		  std::vector<FileMetaData*>::const_iterator base_iter = base_files.begin();
-		  std::vector<FileMetaData*>::const_iterator base_end = base_files.end();
-		  //if the head of the list is unempty, create a new one to accept files from current table
-		  if(v->levels_[level][type]->files_.size()!=0){
-			  v->NewSortedTable(level,(SortedTableType)type);
-		  }
-		  v->levels_[level][type]->files_.reserve(base_files.size());
-		  //add all files in curtable but not in the deleted file list to the new list of v
-		  for (;base_iter != base_end;++base_iter) {
-		      MaybeAddFile(v, type, level, *base_iter);
+		  if(!curtable->obsolete){
+			  if(!started){
+				  started = true;
+				  v->levels_[level][type]->evictable = curtable->evictable;
+				  v->levels_[level][type]->secondchance = curtable->secondchance;
+			  }
+			  // Drop any deleted files.  Store the result in *v.
+			  const std::vector<FileMetaData*>& base_files = curtable->files_;
+			  std::vector<FileMetaData*>::const_iterator base_iter = base_files.begin();
+			  std::vector<FileMetaData*>::const_iterator base_end = base_files.end();
+			  //if the head of the list is unempty, create a new one to accept files from current table
+			  if(v->levels_[level][type]->files_.size()!=0){
+				  v->NewSortedTable(level,(SortedTableType)type);
+				  v->levels_[level][type]->evictable = curtable->evictable;
+				  v->levels_[level][type]->secondchance = curtable->secondchance;
+
+			  }
+			  v->levels_[level][type]->files_.reserve(base_files.size());
+			  //add all files in curtable but not in the deleted file list to the new list of v
+			  for (;base_iter != base_end;++base_iter) {
+				  MaybeAddFile(v, type, level, *base_iter);
+			  }
 		  }
 		  curtable = curtable->prev;
 	  }
@@ -896,7 +1096,8 @@ void SaveTo(Version* v) {
       }
 
     }//end type for loop
-  }//end level for loop
+}//end level for loop
+
 
 #ifndef NDEBUG
       // Make sure there is no overlap in the insertion part of levels > 0
@@ -930,8 +1131,9 @@ void SaveTo(Version* v) {
     	//printf("%d %d\n",level, type);
         assert(vset_->icmp_.Compare((*files)[files->size()-1]->largest,f->smallest) < 0);
       }
-      f->refs++;
-      files->push_back(f);
+      v->levels_[level][type]->AddFile(f);
+      //f->refs++;
+      //files->push_back(f);
     }
   }
 
@@ -969,6 +1171,10 @@ BasicVersionSet::BasicVersionSet(const std::string& dbname,
     : VersionSet(dbname, options, table_cache, cmp)
       {
 	  AppendVersion(new Version(this));
+	  for(int i=0;i<config::kNumLevels;i++){
+		  this->num_hot_files_deleted_[i] = 0;
+		  this->second_chance_[i] = true;
+	  }
 }
 
 BasicVersionSet::~BasicVersionSet() {
@@ -1014,11 +1220,16 @@ Status BasicVersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
   {
     Builder builder(this, current_);
     builder.Apply(edit);
-
     builder.SaveTo(v);
-
+    if(edit->GetRefineCB()){
+    	//v->RefineCompactionBuffer(edit->GetRefineLevel());
+    	if(edit->GetRefineLevel()-1!=0){
+    		v->MarkAllEvictable(edit->GetRefineLevel()-1);
+    	}
+    }
   }
   Finalize(v);
+
 
   // Initialize new descriptor log file if necessary by creating
   // a temporary file that contains a snapshot of the current version.
@@ -1054,7 +1265,9 @@ Status BasicVersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
   descriptor_log_ = NULL;
   descriptor_file_ = NULL;
 
+
   //printf("current: %ld is set\n",manifest_file_number_);
+  //if(edit->deleted_files_[DELETION_PART].size()==0)
   printCurVersion();
   return s;
 }
@@ -1115,6 +1328,16 @@ Status BasicVersionSet::Recover() {
 
       if (s.ok()) {
         builder.Apply(&edit);
+        std::vector< std::pair<int, FileMetaData> >* new_files_ = edit.GetNewFiles();
+        if(config::preload_metadata){
+			printf("loading metadata\n");
+			for(int i=0;i<3;i++){
+				for(int j=0;j<new_files_[i].size();j++){
+					this->table_cache_->LoadTable(new_files_[i][j].second.number,new_files_[i][j].second.file_size);
+				}
+			}
+			printf("done loading metadata\n");
+        }
       }
 
       if (edit.has_log_number_) {
@@ -1183,6 +1406,7 @@ void VersionSet::Finalize(Version* v) {
   double best_score = -1;
   CompactionType best_type = INTERNAL_ROLLING_MERGE;
   for (int level = 0; level < config::kNumLevels; level++) {
+
   	    double score;
   	    CompactionType type;
   	    if (level == 0) {
@@ -1219,6 +1443,8 @@ void VersionSet::Finalize(Version* v) {
   	      }else{
   	    	  score = 0;
   	      }
+
+  	      score = std::min(score,config::level0_max_score);
   	    } else {
   	    	if (v->NumFiles(level) == 0){
   	    			score = 0;
@@ -1230,13 +1456,20 @@ void VersionSet::Finalize(Version* v) {
 
   	    			if(level+1<config::kNumLevels&&v->NumPartFiles(level+1,DELETION_PART)==0){
   	    				score =  (double)v->TotalPartSize(level,INSERTION_PART) / MaxMBytesForLevel(level);
+  	    				if(level==2){
+  	  	    				score =  (double)v->TotalPartSize(level,COMPACTION_BUFFER) / MaxMBytesForLevel(level);
+  	    				}
   	    			}else{
   	    				score = 0;
   	    			}
   	    		//if the deletion part is not empty, then only internal rolling merge could happen in this level
   	    		}else{
   	    			type = INTERNAL_ROLLING_MERGE;
-  	    			score = ((double)v->TotalLevelSize(level-1)+(double)v->TotalPartSize(level,DELETION_PART)) / MaxMBytesForLevel(level-1);    // LX.R
+  	    			if(level==3){
+  	  	    			score = ((double)v->TotalPartSize(level-1,COMPACTION_BUFFER)+(double)v->TotalPartSize(level,DELETION_PART)) / MaxMBytesForLevel(level-1);    // LX.R
+  	    			}else{
+  	    				score = ((double)v->TotalLevelSize(level-1)+(double)v->TotalPartSize(level,DELETION_PART)) / MaxMBytesForLevel(level-1);    // LX.R
+  	    			}
   	    		}
   	    	}
   	    }
@@ -1246,7 +1479,6 @@ void VersionSet::Finalize(Version* v) {
   	      best_type = type;
   	    }
   }
-  if(best_score!=0)fprintf(stderr,"level is %d, action is %s, score is %f\n",best_level,compacttype[best_type].c_str(),best_score);
 
   v->compaction_level_ = best_level;
   v->compaction_score_ = best_score;
@@ -1278,11 +1510,14 @@ Status VersionSet::WriteSnapshot(Version *v, log::Writer* log, VersionEdit *newe
 		  SortedTable *tail = v->levels_[level][type]->prev;
 		  SortedTable *cur = tail;
 		  do{
-			  const std::vector<FileMetaData*>& files = cur->files_;
-			  for (int i = 0; i < files.size(); i++) {
-			  		const FileMetaData* f = files[i];
-			  		edit.AddFile((SortedTableType)type,level,f->number,f->file_size, f->smallest, f->largest);
+			  if(!cur->evictable){
+				  const std::vector<FileMetaData*>& files = cur->files_;
+				  for (int i = 0; i < files.size(); i++) {
+						const FileMetaData* f = files[i];
+						edit.AddFile((SortedTableType)type,level,f->number,f->file_size, f->smallest, f->largest);
+				  }
 			  }
+
 			  cur = cur->prev;
 		  }while(cur!=tail);
 
@@ -1309,30 +1544,6 @@ int BasicVersionSet::NumPartFiles(int level,SortedTableType part){
 
 
 
-
-void VersionSet::AddLiveFiles(std::set<uint64_t>* live) {
-  for (Version* v = dummy_versions_.next_;
-       v != &dummy_versions_;
-       v = v->next_) {
-
-	for (int level = 0; level < config::kNumLevels; level++) {
-		for(int type=0;type<3;type++){
-
-			SortedTable *head = v->levels_[level][type];
-			SortedTable *cur = head;
-
-			do{//go through the entire list
-				const std::vector<FileMetaData*>& files = cur->files_;
-					for (size_t i = 0; i < files.size(); i++) {
-						live->insert(files[i]->number);
-				}
-				cur = cur->next;
-			}while(cur!=head);
-
-		}
-	}
-  }
-}
 
 int64_t VersionSet::NumLevelBytes(int level) const {
   assert(level >= 0);
@@ -1419,7 +1630,7 @@ Compaction* BasicVersionSet::PickCompaction() {
   //TODO pick compaction error
   // We prefer compactions triggered by too much data in a level over
   // the compactions triggered by seeks.
-  const bool size_compaction = (current_->compaction_score_ > runtime::compaction_min_score);
+  const bool size_compaction = (current_->compaction_score_ > runtime::compaction_min_score)||current_->compaction_type_==CompactionType::INTERNAL_ROLLING_MERGE;
   if (size_compaction) {
     level = current_->compaction_level_;
 
@@ -1429,10 +1640,12 @@ Compaction* BasicVersionSet::PickCompaction() {
     //no input is needed for level move
     if(c->type_ == LEVEL_MOVE)
     {
+        fprintf(stderr,"level is %d, action is move, score is %f\n",level,current_->compaction_score_);
     	c->input_version_ = current_;
     	c->input_version_->Ref();
     	return c;
     }
+
     //for level 0, pick all files, and merge it to the deletion part of level 1
     //pick the first file of the deletion part for other levels
 	assert(current_->levels_[level][DELETION_PART]->files_.size()>0);//must be true for rolling merge
@@ -1442,7 +1655,10 @@ Compaction* BasicVersionSet::PickCompaction() {
         	c->inputs_[0].push_back(current_->levels_[0][DELETION_PART]->files_[i]);
     	}
     }else{
-        c->inputs_[0].push_back(current_->levels_[level][DELETION_PART]->files_[0]);
+    	int size = std::min(int(current_->levels_[level][DELETION_PART]->files_.size()),config::files_merged_each_round);
+    	for(int i=0;i<size;i++){
+            c->inputs_[0].push_back(current_->levels_[level][DELETION_PART]->files_[i]);
+    	}
     }
 
   } else {
@@ -1453,6 +1669,19 @@ Compaction* BasicVersionSet::PickCompaction() {
   c->input_version_->Ref();
 
   SetupOtherInputs(c);
+
+  //for internal rolling merge, tracking the number of hot files be disturbed in this round of internal rolling merge
+  for(int i=0;i<c->inputs_[1].size();i++){
+	  FileMetaData *f = c->inputs_[1][i];
+	  Table *t;
+	  this->table_cache_->GetTable(f->number,f->file_size,&t);
+	  if(t->isHot()){
+		  this->num_hot_files_deleted_[level]++;
+		  printf("level: %d file: %d visited: %ld\n",level,i, t->GetVistedNum());
+	  }
+
+  }
+  fprintf(stderr,"level is %d, action is merge, score is %f %ld+%ld \n",level,current_->compaction_score_,c->inputs_[0].size(),c->inputs_[1].size());
   return c;
 }
 
@@ -1540,7 +1769,7 @@ Status BasicVersionSet::MoveLevelDown(int level, port::Mutex *mutex_) {
     	                       f->smallest, f->largest);
     	edit.AddFile(COMPACTION_BUFFER, level+1, f->number, f->file_size,f->smallest, f->largest);
     }
-
+    edit.EnableRefineCB(true,level+1);
     leveldb::Status status = this->LogAndApply(&edit, mutex_);
     return status;
 }

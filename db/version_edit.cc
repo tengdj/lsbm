@@ -20,11 +20,14 @@ enum Tag {
   kDeletedFile          = 6,
   kNewFile              = 7,
   // 8 was used for large value refs
-  kPrevLogNumber        = 9
+  kPrevLogNumber        = 9,
+  kWriteCursor			=10
 };
 
 void VersionEdit::Clear() {
   comparator_.clear();
+  refineCB = false;
+  refineLevel = 0;
   log_number_ = 0;
   prev_log_number_ = 0;
   last_sequence_ = 0;
@@ -96,6 +99,9 @@ void VersionEdit::EncodeTo(std::string* dst) const {
 
   }
 
+  PutVarint32(dst,kWriteCursor);
+  PutVarint64(dst,runtime::write_cursor);
+
 
 
 }
@@ -133,6 +139,7 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
   uint32_t number32;
   uint64_t number;
   FileMetaData f;
+  f.visible = true;
   Slice str;
   InternalKey key;
 
@@ -203,7 +210,12 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
           msg = "new-file entry";
         }
         break;
-
+      case kWriteCursor:
+          	  if (GetVarint64(&input, &runtime::write_cursor)) {
+      		  } else {
+      			msg = "write cursor";
+      		  }
+      		  break;
       default:
         msg = "unknown tag";
         break;

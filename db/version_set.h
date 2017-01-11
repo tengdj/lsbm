@@ -76,6 +76,9 @@ public:
 	SortedTable(){
 		next = NULL;
 		prev = NULL;
+		evictable = false;
+		obsolete = false;
+		secondchance = true;
 	}
 	void AddFile(FileMetaData *file){
 		if(file!=NULL){
@@ -83,10 +86,13 @@ public:
 			files_.push_back(file);
 		}
 	}
+	bool evictable;
+	bool obsolete;
+	bool secondchance;
 	SortedTable *next;
 	SortedTable *prev;
 	std::vector<FileMetaData*> files_;
-
+	std::vector<bool> visible_;
 	//unref all files
 	~SortedTable(){
 		next = NULL;
@@ -100,6 +106,14 @@ public:
 		      }
 		 }
 
+	}
+
+	uint64_t NumVisibleFiles(){
+		uint64_t count = 0;
+		for(int i=0;i<files_.size();i++){
+			count += files_[i]->visible;
+		}
+		return count;
 	}
 
 };
@@ -153,7 +167,11 @@ class Version {
 	SortedTable *cur = head;
 	int filesize = 0;
 	do{
-		filesize += cur->files_.size();
+		if(type==SortedTableType::COMPACTION_BUFFER){
+			filesize += cur->NumVisibleFiles();
+		}else{
+			filesize += cur->files_.size();
+		}
 		cur = cur->next;
 	}while(cur!=head);
 	return filesize;
@@ -162,6 +180,43 @@ class Version {
   uint64_t TotalPartSize(int level, SortedTableType type);
   // Return a human readable string that describes this version's contents.
   std::string DebugString() const;
+  void RefineCompactionBuffer(const int level);
+  bool MaybeEvictTail(const int level){
+	  SortedTable *head = this->levels_[level][COMPACTION_BUFFER];
+	  SortedTable *cur = head->prev;
+	  while(cur != head){
+		  if(!cur->evictable){
+			  return false;
+		  }else if(!cur->obsolete){
+			  cur->obsolete = true;
+			  return true;
+		  }
+		  cur = cur->prev;
+	  }
+	  return false;
+  }
+  void MarkAllEvictable(const int level){
+	  SortedTable *head = this->levels_[level][COMPACTION_BUFFER];
+	  SortedTable *cur = head->prev;
+	  while(cur!=head){
+		  cur->evictable = true;
+		  cur = cur->prev;
+	  }
+  }
+
+  void MarkTailEvictable(const int level){
+  	  SortedTable *head = this->levels_[level][COMPACTION_BUFFER];
+  	  SortedTable *cur = head->prev;
+
+  	  while(cur!=head){
+  		  if(!cur->obsolete)
+  		  {
+  			  cur->evictable = true;
+  			  break;
+  		  }
+  		  cur = cur->prev;
+  	  }
+    }
 
  private:
   friend class Compaction;
@@ -348,12 +403,35 @@ class VersionSet {
   // Returns true iff some level needs a compaction.
   bool NeedsCompaction() const {
     Version* v = current_;
-    return (v->compaction_score_ > leveldb::runtime::compaction_min_score);
+    return (v->compaction_score_ > leveldb::runtime::compaction_min_score||v->compaction_type_==CompactionType::INTERNAL_ROLLING_MERGE);
   }
 
   // Add all files listed in any live version to *live.
   // May also mutate some internal state.
-  void AddLiveFiles(std::set<uint64_t>* live);
+  void VersionSet::AddLiveFiles(std::set<uint64_t>* live) {
+
+    for (Version* v = dummy_versions_.next_;
+         v != &dummy_versions_;
+         v = v->next_) {
+
+  	for (int level = 0; level < config::kNumLevels; level++) {
+  		for(int type=0;type<3;type++){
+
+  			SortedTable *head = v->levels_[level][type];
+  			SortedTable *cur = head;
+
+  			do{//go through the entire list
+  				const std::vector<FileMetaData*>& files = cur->files_;
+  					for (size_t i = 0; i < files.size(); i++) {
+  						live->insert(files[i]->number);
+  				}
+  				cur = cur->next;
+  			}while(cur!=head);
+
+  		}
+  	}
+    }
+  }
 
 
   // Return a human-readable short (single-line) summary of the number
@@ -379,6 +457,8 @@ class VersionSet {
                    const std::vector<FileMetaData*>& inputs2,
                    InternalKey* smallest,
                    InternalKey* largest);
+  uint64_t num_hot_files_deleted_[config::kNumLevels];
+  bool second_chance_[config::kNumLevels];
 
  protected:
   class Builder;
@@ -415,6 +495,8 @@ class VersionSet {
   Version dummy_versions_;  // Head of circular doubly-linked list of versions.
   Version* current_;        // == dummy_versions_.prev_
   const InternalKeyComparator icmp_;
+
+
 
   // No copying allowed
   VersionSet(const VersionSet&);

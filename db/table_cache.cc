@@ -79,6 +79,7 @@ Status TableCache::Get(const ReadOptions& options,
     Table* t = reinterpret_cast<TableAndFile*>(cache_->Value(handle))->table;
     s = t->InternalGet(options, k, arg, saver);
     cache_->Release(handle);
+    //printf("%ld\n",cache_->Used());
   }
   return s;
 }
@@ -92,6 +93,16 @@ Status TableCache::GetTable(uint64_t file_number, uint64_t file_size, Table **ta
 	}
 	return s;
 }
+
+Status TableCache::LoadTable(uint64_t file_number, uint64_t file_size){
+	Cache::Handle *handle = NULL;
+	Status s = FindTable(file_number,file_size,&handle);
+	if (s.ok()) {
+		cache_->Release(handle);
+	}
+	return s;
+}
+
 
 
 void TableCache::Evict(uint64_t file_number, uint64_t file_size) {
@@ -146,6 +157,7 @@ Status TableCache::FindTable(uint64_t file_number, uint64_t file_size,
       TableAndFile* tf = new TableAndFile;
       tf->file = file;
       tf->table = table;
+      tf->table->ClearVisitedNum();
       *handle = cache_->Insert(key, tf, 1, &DeleteEntry);
     }
   }
