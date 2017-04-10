@@ -7,8 +7,11 @@
 
 #include <stdint.h>
 #include "leveldb/iterator.h"
+#include "leveldb/comparator.h"
+
 #include <vector>
-#include "../db/dlsm_param.h"
+
+#include "leveldb/params.h"
 
 
 namespace leveldb {
@@ -64,46 +67,45 @@ class Table {
   Status EvictBlockCache();
 
   Status GetKeyRangeCached(std::vector<Slice *> *result);
-  void IncVisitedNum(){
-	  num_visited_++;;
+
+  uint64_t getCachedNum(){
+	  return num_cached_;
+  }
+  void IncCachedNum(){
+	  num_cached_++;
   }
 
-  void ClearVisitedNum(){
-	  num_visited_ = 0;
-	  num_read_ = runtime::num_reads_;
+  void DecCachedNum(){
+	  num_cached_--;
   }
-  uint64_t GetVistedNum(){
-	  return num_visited_;
+
+  void ClearCachedNum(){
+	  num_cached_=0;
   }
-  bool isHot(){
-	  uint64_t gap = runtime::num_reads_-num_read_;
-	  if(num_visited_==0){
-		  return false;
-	  }
-	  if(gap<config::hot_file_threshold){
-		  return true;
-	  }
-	  return gap/num_visited_ <= config::hot_file_threshold;
-  };
+  bool isHot();
  private:
 
-
-  uint64_t num_visited_;
-  uint64_t num_read_;
+  uint64_t num_cached_;
   struct Rep;
   Rep* rep_;
 
-  explicit Table(Rep* rep) { rep_ = rep; num_visited_ = 0;num_read_=0;}
+  explicit Table(Rep* rep) { rep_ = rep;num_cached_=0;}
   static Iterator* BlockReader(void*, const ReadOptions&, const Slice&);
 
   // Calls (*handle_result)(arg, ...) with the entry found after a call
   // to Seek(key).  May not make such a call if filter policy says
   // that key is not present.
   friend class TableCache;
+  friend class Version;
   Status InternalGet(
       const ReadOptions&, const Slice& key,
       void* arg,
       void (*handle_result)(void* arg, const Slice& k, const Slice& v));
+
+  int InternalGetRange(const ReadOptions&, const Comparator* ucmp, const Slice& start, const Slice &end);
+
+  bool ContainKey(const ReadOptions&, const Slice& key);
+  Status SkipFilterGet(const ReadOptions&, const Slice& key,void* arg,void (*handle_result)(void* arg, const Slice& k, const Slice& v));
 
 
   void ReadMeta(const Footer& footer);

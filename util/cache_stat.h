@@ -11,7 +11,7 @@
 namespace leveldb{
 
 
-	void updateCache_stat(int kvcache, int blockcache, int hdd, double,double);
+	void updateCache_stat(int kvcache, int blockcache, int oscache, int hdd, double,double);
 
 }
 

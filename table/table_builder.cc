@@ -15,12 +15,12 @@
 #include "table/format.h"
 #include "util/coding.h"
 #include "util/crc32c.h"
-#include "db/dlsm_param.h"
 #include "table/block.h"
 #include "leveldb/cache.h"
 
 #include <stdio.h>
 #include <vector>
+#include "leveldb/params.h"
 
 
 
@@ -220,16 +220,12 @@ void TableBuilder::WriteBlock(BlockBuilder* block, BlockHandle* handle, bool cac
       		EncodeFixed64(cache_key_buffer, r->file->getFilenumber());
       		EncodeFixed64(cache_key_buffer+8, handle->offset());
       		Slice key(cache_key_buffer, sizeof(cache_key_buffer));
-      		BlockContents content;
       		char *chs = new char[block_contents.size()];
       		memcpy(chs,block_contents.data(),block_contents.size());
-      		Slice block_contents_tmp(chs,block_contents.size());
-      		content.data = block_contents_tmp;
-      		content.cachable = true;
-      		content.heap_allocated = true;
-      		Block *blockobj = new Block(content);
+      		Block *blockobj = new Block(chs,block_contents.size(),true);
       		leveldb::Cache::Handle *handle = r->options.block_cache->Insert(key,(void*)blockobj,blockobj->size(),&DeleteCachedBlock_builder);
-      		this->rep_->options.block_cache->Release(handle);
+      		r->options.block_cache->Release(handle);
+      		//delete blockobj;
       }
   }
   WriteRawBlock(block_contents, type, handle);

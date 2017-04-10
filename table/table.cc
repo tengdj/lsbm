@@ -8,6 +8,7 @@
 #include <sys/time.h>
 #include "leveldb/table.h"
 
+#include "leveldb/params.h"
 #include "leveldb/cache.h"
 #include "leveldb/comparator.h"
 #include "leveldb/env.h"
@@ -18,7 +19,6 @@
 #include "table/format.h"
 #include "table/two_level_iterator.h"
 #include "util/coding.h"
-#include "db/dlsm_param.h"
 #include "util/cache_stat.h"
 
 namespace leveldb {
@@ -26,7 +26,9 @@ namespace leveldb {
 struct Table::Rep {
   ~Rep() {
     delete filter;
-    delete [] filter_data;
+    if(filter_data!=NULL){
+    	delete [] filter_data;
+    }
     //printf("rep: %ld\n",this->filenumber);
     delete index_block;
   }
@@ -148,8 +150,8 @@ Table::~Table() {
 //  }
   //printf("%ld\n",this->num_blocks_cached);
 
-  Status s = this->EvictBlockCache();
-  assert(s.ok());
+  //Status s = this->EvictBlockCache();
+  //assert(s.ok());
   delete rep_;
 }
 
@@ -160,6 +162,7 @@ static void DeleteBlock(void* arg, void* ignored) {
 
 static void DeleteCachedBlock(const Slice& key, void* value) {
   Block* block = reinterpret_cast<Block*>(value);
+  //block->evicted();
   delete block;
 }
 
@@ -169,6 +172,9 @@ static void ReleaseBlock(void* arg, void* h) {
   cache->Release(handle);
 }
 
+bool Table::isHot(){
+	  return this->num_cached_>config::hot_file_threshold;
+}
 
 // Convert an index iterator value (i.e., an encoded BlockHandle)
 // into an iterator over the contents of the corresponding block.
@@ -178,6 +184,7 @@ Iterator* Table::BlockReader(void* arg,
 
 
   int block_cache_served = 0;
+  int oscache_served = 0;
   int hdd_served = 0;
 
   Table* table = reinterpret_cast<Table*>(arg);
@@ -235,9 +242,14 @@ Iterator* Table::BlockReader(void* arg,
     }
     //read from disk
     if ( block == NULL) {
+      timespec start;
+      runtime::gettime(start);
       s = ReadBlock(table->rep_->file, options, handle, &contents);
+      if(runtime::diftimemsec(start)<=200){
+    	  oscache_served++;
+      }
       if (s.ok()) {
-        block = new Block(contents);
+        block = new Block(contents,table);
         if(!runtime::isWarmingUp())
         {
         	hdd_served++;
@@ -253,6 +265,8 @@ Iterator* Table::BlockReader(void* arg,
         if (cache_handle == NULL) {
           //when one block is inserted into the block cache, increase the counter of this file
           cache_handle = block_cache->Insert(key, block, block->size(), &DeleteCachedBlock);
+          block->cached();
+          //table->IncCachedNum();
    	    }
       }
     }
@@ -275,16 +289,11 @@ Iterator* Table::BlockReader(void* arg,
 
   double blockcache_used = 0;
   if(block_cache){
-	  blockcache_used = (double)block_cache->Used()/block_cache->getCapacity();
+	  blockcache_used = block_cache->Percent();
   }
 
   if(!runtime::isWarmingUp()&&options.fill_cache){
-	  leveldb::updateCache_stat(0,block_cache_served,hdd_served,0,blockcache_used);
-  }
-
-  if(options.fill_cache){
-	  table->IncVisitedNum();
-	  runtime::num_reads_++;
+	  leveldb::updateCache_stat(0,block_cache_served,oscache_served,hdd_served,0,blockcache_used);
   }
 
   return iter;
@@ -295,6 +304,7 @@ Iterator* Table::NewIterator(const ReadOptions& options) const {
       rep_->index_block->NewIterator(rep_->options.comparator),
       &Table::BlockReader, const_cast<Table*>(this), options);
 }
+
 
 Status Table::InternalGet(const ReadOptions& options, const Slice& k,
                           void* arg,
@@ -310,7 +320,83 @@ Status Table::InternalGet(const ReadOptions& options, const Slice& k,
         handle.DecodeFrom(&handle_value).ok() &&
         !filter->KeyMayMatch(handle.offset(), k)) {
       // Not found
-    } else
+    } else {
+      Iterator* block_iter = BlockReader(this, options, iiter->value());
+      block_iter->Seek(k);
+      if (block_iter->Valid()) {
+        (*saver)(arg, block_iter->key(), block_iter->value());
+      }
+      s = block_iter->status();
+      delete block_iter;
+    }
+  }
+  if (s.ok()) {
+    s = iiter->status();
+  }
+
+  delete iiter;
+  return s;
+}
+int Table::InternalGetRange(
+      const ReadOptions& options, const Comparator* ucmp,const Slice& start, const Slice &end){
+
+	int found = 0;
+	Iterator* iter = NewIterator(options);
+	iter->Seek(start);
+	if(iter->Valid()){
+	  for (; iter->Valid(); iter->Next()) {
+
+//		  if(ucmp->Compare(iter->key(), start) < 0){
+//			 continue;
+//		  }
+		  if(ucmp->Compare(iter->key(), end) > 0){
+			  break;
+		  }
+		  found++;
+
+
+	  }
+	  Status s = iter->status();
+	  if (!s.ok()) {
+		delete iter;
+		printf("iterator error: %s\n", s.ToString().c_str());
+	  }
+	}
+
+	delete iter;
+	return found;
+}
+
+bool Table::ContainKey(const ReadOptions& options, const Slice& k) {
+  Status s;
+  Iterator* iiter = rep_->index_block->NewIterator(rep_->options.comparator);
+  iiter->Seek(k);
+  bool contain = false;
+  if (iiter->Valid()) {
+    Slice handle_value = iiter->value();
+    FilterBlockReader* filter = rep_->filter;
+    BlockHandle handle;
+    if (filter != NULL &&
+        handle.DecodeFrom(&handle_value).ok() &&
+        !filter->KeyMayMatch(handle.offset(), k)) {
+      // Not found
+    } else {
+      contain = true;
+    }
+  }
+
+  delete iiter;
+  return contain;
+}
+
+Status Table::SkipFilterGet(const ReadOptions& options, const Slice& k,
+                          void* arg,
+                          void (*saver)(void*, const Slice&, const Slice&)) {
+  Status s;
+  Iterator* iiter = rep_->index_block->NewIterator(rep_->options.comparator);
+  iiter->Seek(k);
+  if (iiter->Valid()) {
+    BlockHandle handle;
     {
       Iterator* block_iter = BlockReader(this, options, iiter->value());
       block_iter->Seek(k);
@@ -335,10 +421,9 @@ Status Table::EvictBlockCache(){
 	Iterator* iiter = rep_->index_block->NewIterator(rep_->options.comparator);
 	Cache *block_cache = rep_->options.block_cache;
 	if(!block_cache){
+		delete iiter;
 		return Status::OK();
 	}
-	uint64_t before, after;
-	before = block_cache->Used();
 
 	iiter->SeekToFirst();
 
@@ -359,10 +444,10 @@ Status Table::EvictBlockCache(){
 	    s = iiter->status();
 	}
     delete iiter;
-    after = block_cache->Used();
 
-    if(false&&before>after){
-      printf("evicted file: %ld, before %ld and after: %ld\n",rep_->filenumber,before/rep_->options.block_size,after/rep_->options.block_size);
+    if(this->num_cached_>=leveldb::config::hot_file_threshold)
+    {
+      fprintf(stderr,"evicted file: %ld, %ld blocks evicted\n",rep_->filenumber,this->num_cached_);
     }
 	return s;
 }
@@ -378,6 +463,7 @@ Status Table::GetKeyRangeCached(std::vector<Slice *> *result){
 	Iterator* iiter = rep_->index_block->NewIterator(rep_->options.comparator);
 	Cache *block_cache = rep_->options.block_cache;
 	if(!block_cache){
+		delete iiter;
 		return Status::OK();
 	}
 
@@ -401,8 +487,9 @@ Status Table::GetKeyRangeCached(std::vector<Slice *> *result){
         		char *ch1 = new char[ittr->key().size()];
         		memcpy(ch1,ittr->key().data(),ittr->key().size());
         		Slice s1(ch1,ittr->key().size());
-        		ittr->SeekToLast();
         		minAndMax[0] = s1;
+
+        		ittr->SeekToLast();
         		char *ch2 = new char[ittr->key().size()];
         		memcpy(ch2,ittr->key().data(),ittr->key().size());
         		Slice s2(ch2,ittr->key().size());

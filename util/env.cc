@@ -25,6 +25,7 @@ FileLock::~FileLock() {
 }
 
 void Log(Logger* info_log, const char* format, ...) {
+  return;
   if (info_log != NULL) {
     va_list ap;
     va_start(ap, format);

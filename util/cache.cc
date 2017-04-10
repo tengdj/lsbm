@@ -192,9 +192,9 @@ LRUCache::~LRUCache() {
 void LRUCache::Unref(LRUHandle* e) {
   assert(e->refs > 0);
   e->refs--;
+  size_t before = usage_;
   if (e->refs <= 0) {
     usage_ -= e->charge;
-
     (*e->deleter)(e->key(), e->value);
     free(e);
   }
