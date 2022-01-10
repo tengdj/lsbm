@@ -8,7 +8,7 @@
 #include <stdint.h>
 
 #include "dbformat.h"
-#include "leveldb/db.h"
+#include "lsbm/db.h"
 
 namespace leveldb {
 

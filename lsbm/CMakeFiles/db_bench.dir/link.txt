@@ -1,0 +1,1 @@
+g++   -fno-builtin-memcmp -pthread -DOS_LINUX -DLEVELDB_PLATFORM_POSIX -DSNAPPY -O3 -g2 -DNDEBUG -std=c++11  -rdynamic CMakeFiles/db_bench.dir/db_bench.cc.o  -o db_bench libdb_lsmcb.a ../common/libdb_common.a ../port/libport.a ../table/libtable.a ../util/libutil.a -lsnappy -lpthread 

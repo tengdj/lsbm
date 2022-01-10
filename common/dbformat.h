@@ -7,12 +7,12 @@
 
 #include <stdio.h>
 
-#include "leveldb/params.h"
-#include "leveldb/comparator.h"
-#include "leveldb/db.h"
-#include "leveldb/filter_policy.h"
-#include "leveldb/slice.h"
-#include "leveldb/table_builder.h"
+#include "lsbm/params.h"
+#include "lsbm/comparator.h"
+#include "lsbm/db.h"
+#include "lsbm/filter_policy.h"
+#include "lsbm/slice.h"
+#include "lsbm/table_builder.h"
 #include "util/coding.h"
 #include "util/logging.h"
 

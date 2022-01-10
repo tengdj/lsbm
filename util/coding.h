@@ -13,7 +13,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <string>
-#include "leveldb/slice.h"
+#include "lsbm/slice.h"
 #include "port/port.h"
 
 namespace leveldb {

@@ -8,10 +8,10 @@
 #include "filename.h"
 #include "table_cache.h"
 #include "version_edit.h"
-#include "leveldb/db.h"
-#include "leveldb/env.h"
-#include "leveldb/iterator.h"
-#include "leveldb/table_builder.h"
+#include "lsbm/db.h"
+#include "lsbm/env.h"
+#include "lsbm/iterator.h"
+#include "lsbm/table_builder.h"
 
 namespace leveldb {
 

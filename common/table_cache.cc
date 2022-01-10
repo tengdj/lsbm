@@ -5,10 +5,10 @@
 #include "table_cache.h"
 
 #include "filename.h"
-#include "leveldb/env.h"
-#include "leveldb/table.h"
+#include "lsbm/env.h"
+#include "lsbm/table.h"
 #include "util/coding.h"
-#include "leveldb/params.h"
+#include "lsbm/params.h"
 #include <iostream>
 namespace leveldb {
 

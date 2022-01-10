@@ -8,7 +8,7 @@
 #include <vector>
 
 #include <stdint.h>
-#include "leveldb/slice.h"
+#include "lsbm/slice.h"
 
 namespace leveldb {
 

@@ -5,11 +5,11 @@
  *      Author: teng
  */
 
-#include "leveldb/env.h"
+#include "lsbm/env.h"
 #include "port/port_posix.h"
 #include <stdio.h>
 
-#include "leveldb/params.h"
+#include "lsbm/params.h"
 
 namespace leveldb{
 
@@ -30,6 +30,7 @@ static port::Mutex stats_mu_;
 
 static time_t start = 0;
 
+// 传入对应的不同缓存或者 hdd 服务的请求数量
 void updateCache_stat(int kvcache, int blockcache, int oscache, int hdd, double keycache_used, double blockcache_used){
 
 	  time_t now;
@@ -54,6 +55,12 @@ void updateCache_stat(int kvcache, int blockcache, int oscache, int hdd, double 
 		  prev_blockcache_served = blockcache_served;
 		  prev_hdd_served = hdd_served;
 
+		  // 输出
+		  // 总服务请求数
+		  // kvcache: 命中率 | 使用率 | 间隔服务的请求数 | 总请求数
+		  // blockcache: 命中率 | 使用率 | 间隔服务的请求数 | 总请求数
+		  // disk/pagecache: 命中率 | 使用率 | 间隔pagecache服务的请求数 | 间隔 hdd 服务的请求数 | hdd 服务的请求总数
+		  // 时间
 	      if(gap_total_served!=0){
 	    	  //fprintf(stdout,"total: %8d kvcache: %2.2f %2.2f (%8d,%8d) blockcache: %2.4f %2.4f(%8d,%8d) disk:%2.4f (%8d,%8d) time: %d\n",
 	    	    fprintf(stdout,"total: |%9d| kvcache: |%2.4f|%2.4f|%6d|%9d| blockcache: |%2.4f|%2.4f|%6d|%9d| disk:|%2.4f|%2.4f|%6d|%6d|%9d| time:|%5d|\n",

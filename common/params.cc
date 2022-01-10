@@ -7,7 +7,7 @@
  *      Author: teng
  */
 
-#include "leveldb/params.h"
+#include "lsbm/params.h"
 
 namespace leveldb{
 

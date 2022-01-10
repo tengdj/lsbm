@@ -5,9 +5,9 @@
 #include "memtable.h"
 
 #include "dbformat.h"
-#include "leveldb/comparator.h"
-#include "leveldb/env.h"
-#include "leveldb/iterator.h"
+#include "lsbm/comparator.h"
+#include "lsbm/env.h"
+#include "lsbm/iterator.h"
 #include "util/coding.h"
 
 namespace leveldb {

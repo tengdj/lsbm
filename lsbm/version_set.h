@@ -20,10 +20,12 @@
 #include <vector>
 
 #include "dbformat.h"
-#include "leveldb/params.h"
+#include "lsbm/params.h"
 #include "version_edit.h"
 #include "port/port.h"
 #include "port/thread_annotations.h"
+
+#include <cmath>
 
 #define digit_base 1024
 namespace leveldb {
@@ -170,18 +172,18 @@ class Version {
   }
 
   int NumPartFiles(int level, SortedTableType type) const{
-	SortedTable *head = levels_[level][type];
-	SortedTable *cur = head;
-	int filesize = 0;
-	do{
-		if(type==SortedTableType::COMPACTION_BUFFER){
-			filesize += cur->NumVisibleFiles();
-		}else{
-			filesize += cur->files_.size();
-		}
-		cur = cur->next;
-	}while(cur!=head);
-	return filesize;
+    SortedTable *head = levels_[level][type];
+    SortedTable *cur = head;
+    int filesize = 0;
+    do{
+      if(type==SortedTableType::COMPACTION_BUFFER){
+        filesize += cur->NumVisibleFiles();
+      }else{
+        filesize += cur->files_.size();
+      }
+      cur = cur->next;
+    }while(cur!=head);
+    return filesize;
   }
   uint64_t TotalLevelSize(int level);
   uint64_t TotalPartSize(int level, SortedTableType type);

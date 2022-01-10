@@ -4,8 +4,8 @@
 
 #include "table/merger.h"
 
-#include "leveldb/comparator.h"
-#include "leveldb/iterator.h"
+#include "lsbm/comparator.h"
+#include "lsbm/iterator.h"
 #include "table/iterator_wrapper.h"
 
 namespace leveldb {

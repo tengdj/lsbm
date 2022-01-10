@@ -11,8 +11,8 @@
 #include <stdint.h>
 
 #include "dbformat.h"
-#include "leveldb/cache.h"
-#include "leveldb/table.h"
+#include "lsbm/cache.h"
+#include "lsbm/table.h"
 #include "port/port.h"
 
 namespace leveldb {

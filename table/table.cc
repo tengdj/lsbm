@@ -6,14 +6,14 @@
 #include <stdlib.h>
 #include <vector>
 #include <sys/time.h>
-#include "leveldb/table.h"
+#include "lsbm/table.h"
 
-#include "leveldb/params.h"
-#include "leveldb/cache.h"
-#include "leveldb/comparator.h"
-#include "leveldb/env.h"
-#include "leveldb/filter_policy.h"
-#include "leveldb/options.h"
+#include "lsbm/params.h"
+#include "lsbm/cache.h"
+#include "lsbm/comparator.h"
+#include "lsbm/env.h"
+#include "lsbm/filter_policy.h"
+#include "lsbm/options.h"
 #include "table/block.h"
 #include "table/filter_block.h"
 #include "table/format.h"

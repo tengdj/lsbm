@@ -1,0 +1,2 @@
+/usr/bin/ar qc libdb_common.a  CMakeFiles/db_common.dir/dbformat.cc.o CMakeFiles/db_common.dir/filename.cc.o CMakeFiles/db_common.dir/generator.cc.o CMakeFiles/db_common.dir/log_reader.cc.o CMakeFiles/db_common.dir/log_writer.cc.o CMakeFiles/db_common.dir/params.cc.o CMakeFiles/db_common.dir/memtable.cc.o CMakeFiles/db_common.dir/table_cache.cc.o CMakeFiles/db_common.dir/write_batch.cc.o
+/usr/bin/ranlib libdb_common.a

@@ -1,0 +1,509 @@
+Keys:       16 bytes each
+Values:     1024 bytes each (1024 bytes after compression)
+Entries:    10485760
+RawSize:    10400.0 MB (estimated)
+FileSize:   10400.0 MB (estimated)
+------------------------------------------------
+total: |        1| kvcache: |0.0000|0.0000|     0|        0| blockcache: |0.0000|0.0000|     0|        0| disk:|1.0000|1.0000|     1|     1|        1| time:|    1|
+total: |     3006| kvcache: |0.2825|0.0000|   849|      849| blockcache: |0.0120|0.0497|    36|       36| disk:|0.7055|1.0000|  2120|  2120|     2121| time:|    2|
+writeop: finishd 2927 ops out of 2927, timepassed: 1 writecursor: 10447590
+total: |    28106| kvcache: |0.4455|0.0000| 11181|    12030| blockcache: |0.0463|0.3489|  1161|     1197| disk:|0.5083|1.0000| 12758| 12758|    14879| time:|    3|
+writeop: finishd 24378 ops out of 27305, timepassed: 2 writecursor: 10447590
+writeop: finishd 21993 ops out of 49298, timepassed: 3 writecursor: 10447590
+total: |    50716| kvcache: |0.5001|0.0000| 11308|    23338| blockcache: |0.0580|0.5831|  1311|     2508| disk:|0.4419|1.0000|  9991|  9991|    24870| time:|    4|
+total: |    72761| kvcache: |0.5283|0.0000| 11646|    34984| blockcache: |0.0601|0.7959|  1326|     3834| disk:|0.4116|1.0000|  9073|  9073|    33943| time:|    5|
+writeop: finishd 21436 ops out of 70734, timepassed: 4 writecursor: 10447590
+total: |    96435| kvcache: |0.5462|0.0000| 12930|    47914| blockcache: |0.0621|0.9995|  1469|     5303| disk:|0.3918|1.0000|  9275|  9275|    43218| time:|    6|
+writeop: finishd 22966 ops out of 93700, timepassed: 5 writecursor: 10447590
+total: |   118279| kvcache: |0.5625|0.0000| 12287|    60201| blockcache: |0.0554|0.9999|  1210|     6513| disk:|0.3821|1.0000|  8347|  8347|    51565| time:|    7|
+writeop: finishd 21228 ops out of 114928, timepassed: 6 writecursor: 10447590
+total: |   140240| kvcache: |0.5731|0.0000| 12585|    72786| blockcache: |0.0493|0.9999|  1082|     7595| disk:|0.3777|1.0000|  8294|  8294|    59859| time:|    8|
+writeop: finishd 21428 ops out of 136356, timepassed: 7 writecursor: 10447590
+total: |   161880| kvcache: |0.5866|0.0000| 12694|    85480| blockcache: |0.0400|0.9999|   866|     8461| disk:|0.3734|1.0000|  8080|  8080|    67939| time:|    9|
+writeop: finishd 21060 ops out of 157416, timepassed: 8 writecursor: 10447590
+total: |   184531| kvcache: |0.5953|0.0000| 13485|    98965| blockcache: |0.0386|0.9999|   875|     9336| disk:|0.3660|1.0000|  8291|  8291|    76230| time:|   10|
+writeop: finishd 22138 ops out of 179554, timepassed: 9 writecursor: 10447590
+total: |   206782| kvcache: |0.5991|0.0000| 13331|   112296| blockcache: |0.0366|0.9999|   815|    10151| disk:|0.3643|1.0000|  8105|  8105|    84335| time:|   11|
+writeop: finishd 21686 ops out of 201240, timepassed: 10 writecursor: 10447590
+total: |   229114| kvcache: |0.6039|0.0000| 13486|   125782| blockcache: |0.0326|0.9999|   728|    10879| disk:|0.3635|1.0000|  8118|  8118|    92453| time:|   12|
+writeop: finishd 21756 ops out of 222996, timepassed: 11 writecursor: 10447590
+total: |   251568| kvcache: |0.6199|0.0000| 13920|   139702| blockcache: |0.0266|0.9999|   598|    11477| disk:|0.3534|1.0000|  7936|  7936|   100389| time:|   13|
+writeop: finishd 21924 ops out of 244920, timepassed: 12 writecursor: 10447590
+total: |   273225| kvcache: |0.6169|0.0000| 13360|   153062| blockcache: |0.0272|0.9999|   590|    12067| disk:|0.3559|1.0000|  7707|  7707|   108096| time:|   14|
+writeop: finishd 21154 ops out of 266074, timepassed: 13 writecursor: 10447590
+total: |   294996| kvcache: |0.6068|0.0000| 13210|   166272| blockcache: |0.0273|0.9999|   595|    12662| disk:|0.3659|1.0000|  7966|  7966|   116062| time:|   15|
+writeop: finishd 21167 ops out of 287241, timepassed: 14 writecursor: 10447590
+total: |   316856| kvcache: |0.6065|0.0000| 13257|   179529| blockcache: |0.0280|0.9999|   611|    13273| disk:|0.3656|1.0000|  7992|  7992|   124054| time:|   16|
+writeop: finishd 21232 ops out of 308473, timepassed: 15 writecursor: 10447590
+total: |   338929| kvcache: |0.6117|0.0000| 13501|   193030| blockcache: |0.0276|0.9999|   609|    13882| disk:|0.3608|1.0000|  7963|  7963|   132017| time:|   17|
+writeop: finishd 21497 ops out of 329970, timepassed: 16 writecursor: 10447590
+total: |   361285| kvcache: |0.6132|0.0000| 13708|   206738| blockcache: |0.0276|0.9999|   616|    14498| disk:|0.3593|1.0000|  8032|  8032|   140049| time:|   18|
+writeop: finishd 21779 ops out of 351749, timepassed: 17 writecursor: 10447590
+total: |   383217| kvcache: |0.6084|0.0000| 13343|   220081| blockcache: |0.0293|0.9999|   643|    15141| disk:|0.3623|1.0000|  7946|  7946|   147995| time:|   19|
+writeop: finishd 21397 ops out of 373146, timepassed: 18 writecursor: 10447590
+total: |   405720| kvcache: |0.6141|0.0000| 13819|   233900| blockcache: |0.0286|0.9999|   644|    15785| disk:|0.3573|1.0000|  8040|  8040|   156035| time:|   20|
+writeop: finishd 21947 ops out of 395093, timepassed: 19 writecursor: 10447590
+total: |   427804| kvcache: |0.6078|0.0000| 13422|   247322| blockcache: |0.0254|0.9999|   561|    16346| disk:|0.3668|1.0000|  8101|  8101|   164136| time:|   21|
+writeop: finishd 21493 ops out of 416586, timepassed: 20 writecursor: 10447590
+total: |   449980| kvcache: |0.6086|0.0000| 13497|   260819| blockcache: |0.0263|0.9999|   583|    16929| disk:|0.3651|1.0000|  8096|  8096|   172232| time:|   22|
+writeop: finishd 21577 ops out of 438163, timepassed: 21 writecursor: 10447590
+total: |   472009| kvcache: |0.6061|0.0000| 13351|   274170| blockcache: |0.0254|0.9999|   560|    17489| disk:|0.3685|1.0000|  8118|  8118|   180350| time:|   23|
+writeop: finishd 21501 ops out of 459664, timepassed: 22 writecursor: 10447590
+total: |   493839| kvcache: |0.6039|0.0000| 13184|   287354| blockcache: |0.0268|0.9999|   585|    18074| disk:|0.3693|1.0000|  8061|  8061|   188411| time:|   24|
+writeop: finishd 21228 ops out of 480892, timepassed: 23 writecursor: 10447590
+total: |   515066| kvcache: |0.6016|0.0000| 12770|   300124| blockcache: |0.0269|0.9999|   571|    18645| disk:|0.3715|1.0000|  7886|  7886|   196297| time:|   25|
+writeop: finishd 20673 ops out of 501565, timepassed: 24 writecursor: 10447590
+total: |   536469| kvcache: |0.6119|0.0000| 13096|   313220| blockcache: |0.0269|0.9999|   576|    19221| disk:|0.3612|1.0000|  7731|  7731|   204028| time:|   26|
+writeop: finishd 20860 ops out of 522425, timepassed: 25 writecursor: 10447590
+writeop: finishd 21352 ops out of 543777, timepassed: 26 writecursor: 10447590
+total: |   558373| kvcache: |0.6044|0.0000| 13238|   326458| blockcache: |0.0277|0.9999|   606|    19827| disk:|0.3680|1.0000|  8060|  8060|   212088| time:|   27|
+total: |   580559| kvcache: |0.6136|0.0000| 13613|   340071| blockcache: |0.0282|0.9999|   625|    20452| disk:|0.3582|1.0000|  7948|  7948|   220036| time:|   28|
+writeop: finishd 21590 ops out of 565367, timepassed: 27 writecursor: 10447590
+total: |   602452| kvcache: |0.6069|0.0000| 13287|   353358| blockcache: |0.0280|0.9999|   614|    21066| disk:|0.3650|1.0000|  7992|  7992|   228028| time:|   29|
+writeop: finishd 21393 ops out of 586760, timepassed: 28 writecursor: 10447590
+total: |   624734| kvcache: |0.6114|0.0000| 13623|   366981| blockcache: |0.0255|0.9999|   568|    21634| disk:|0.3631|1.0000|  8091|  8091|   236119| time:|   30|
+writeop: finishd 21676 ops out of 608436, timepassed: 29 writecursor: 10447590
+total: |   646782| kvcache: |0.6076|0.0000| 13396|   380377| blockcache: |0.0267|0.9999|   589|    22223| disk:|0.3657|1.0000|  8063|  8063|   244182| time:|   31|
+writeop: finishd 21463 ops out of 629899, timepassed: 30 writecursor: 10447590
+total: |   676542| kvcache: |0.6141|0.0000| 18275|   398652| blockcache: |0.0226|0.4384|   674|    22897| disk:|0.3633|0.9999| 10810| 10811|   254993| time:|   32|
+writeop: finishd 29391 ops out of 659290, timepassed: 31 writecursor: 10447590
+total: |   741554| kvcache: |0.6195|0.0000| 40277|   438929| blockcache: |0.0312|0.9706|  2029|    24926| disk:|0.3493|1.0000| 22706| 22706|   277699| time:|   33|
+writeop: finishd 64231 ops out of 723521, timepassed: 32 writecursor: 10447590
+total: |   806682| kvcache: |0.6166|0.0000| 40157|   479086| blockcache: |0.0355|1.0000|  2311|    27237| disk:|0.3479|1.0000| 22660| 22660|   300359| time:|   34|
+writeop: finishd 64314 ops out of 787835, timepassed: 33 writecursor: 10447590
+writeop: finishd 64265 ops out of 852100, timepassed: 34 writecursor: 10447590
+total: |   871725| kvcache: |0.6201|0.9999| 40330|   519416| blockcache: |0.0328|0.0000|  2133|    29370| disk:|0.3472|1.0000| 22580| 22580|   322939| time:|   35|
+total: |   935921| kvcache: |0.6181|0.0000| 39682|   559098| blockcache: |0.0324|1.0000|  2080|    31450| disk:|0.3495|1.0000| 22434| 22434|   345373| time:|   36|
+writeop: finishd 63427 ops out of 915527, timepassed: 35 writecursor: 10447590
+total: |  1000603| kvcache: |0.6184|0.0000| 39998|   599096| blockcache: |0.0316|1.0000|  2043|    33493| disk:|0.3500|1.0000| 22641| 22641|   368014| time:|   37|
+writeop: finishd 63910 ops out of 979437, timepassed: 36 writecursor: 10447590
+total: |  1065099| kvcache: |0.6184|0.0000| 39887|   638983| blockcache: |0.0323|1.0000|  2080|    35573| disk:|0.3493|1.0000| 22529| 22529|   390543| time:|   38|
+writeop: finishd 63741 ops out of 1043178, timepassed: 37 writecursor: 10447590
+total: |  1128823| kvcache: |0.6168|0.0000| 39303|   678286| blockcache: |0.0332|1.0000|  2115|    37688| disk:|0.3500|1.0000| 22306| 22306|   412849| time:|   39|
+writeop: finishd 63012 ops out of 1106190, timepassed: 38 writecursor: 10447590
+total: |  1192972| kvcache: |0.6165|0.0000| 39545|   717831| blockcache: |0.0317|1.0000|  2031|    39719| disk:|0.3519|1.0000| 22573| 22573|   435422| time:|   40|
+writeop: finishd 63386 ops out of 1169576, timepassed: 39 writecursor: 10447590
+total: |  1257799| kvcache: |0.6185|0.0000| 40097|   757928| blockcache: |0.0322|1.0000|  2085|    41804| disk:|0.3493|1.0000| 22645| 22645|   458067| time:|   41|
+writeop: finishd 64056 ops out of 1233632, timepassed: 40 writecursor: 10447590
+total: |  1321698| kvcache: |0.6157|0.0000| 39344|   797272| blockcache: |0.0321|1.0000|  2048|    43852| disk:|0.3522|1.0000| 22507| 22507|   480574| time:|   42|
+writeop: finishd 63133 ops out of 1296765, timepassed: 41 writecursor: 10447590
+total: |  1385781| kvcache: |0.6140|0.0000| 39350|   836622| blockcache: |0.0319|1.0000|  2047|    45899| disk:|0.3540|1.0000| 22686| 22686|   503260| time:|   43|
+writeop: finishd 63248 ops out of 1360013, timepassed: 42 writecursor: 10447590
+total: |  1450528| kvcache: |0.6181|0.0000| 40019|   876641| blockcache: |0.0320|1.0000|  2070|    47969| disk:|0.3499|1.0000| 22658| 22658|   525918| time:|   44|
+writeop: finishd 63949 ops out of 1423962, timepassed: 43 writecursor: 10447590
+total: |  1515279| kvcache: |0.6157|0.0000| 39868|   916509| blockcache: |0.0324|1.0000|  2096|    50065| disk:|0.3519|1.0000| 22787| 22787|   548705| time:|   45|
+writeop: finishd 63971 ops out of 1487933, timepassed: 44 writecursor: 10447590
+total: |  1578079| kvcache: |0.6155|0.0000| 38652|   955161| blockcache: |0.0317|1.0000|  1989|    52054| disk:|0.3529|1.0000| 22159| 22159|   570864| time:|   46|
+writeop: finishd 62022 ops out of 1549955, timepassed: 45 writecursor: 10447590
+total: |  1641733| kvcache: |0.6195|0.0000| 39435|   994596| blockcache: |0.0319|1.0000|  2028|    54082| disk:|0.3486|1.0000| 22191| 22191|   593055| time:|   47|
+writeop: finishd 62932 ops out of 1612887, timepassed: 46 writecursor: 10447590
+writeop: finishd 63560 ops out of 1676447, timepassed: 47 writecursor: 10447590
+total: |  1706061| kvcache: |0.6194|0.9999| 39843|  1034439| blockcache: |0.0310|0.0000|  1995|    56077| disk:|0.3496|1.0000| 22490| 22490|   615545| time:|   48|
+total: |  1765029| kvcache: |0.6150|0.0000| 36268|  1070707| blockcache: |0.0318|1.0000|  1875|    57952| disk:|0.3532|1.0000| 20825| 20825|   636370| time:|   49|
+writeop: finishd 58217 ops out of 1734664, timepassed: 48 writecursor: 10447590
+total: |  1827435| kvcache: |0.6199|0.0000| 38686|  1109393| blockcache: |0.0328|1.0000|  2044|    59996| disk:|0.3473|1.0000| 21676| 21676|   658046| time:|   50|
+writeop: finishd 61733 ops out of 1796397, timepassed: 49 writecursor: 10447590
+total: |  1891050| kvcache: |0.6177|0.0000| 39295|  1148688| blockcache: |0.0319|1.0000|  2032|    62028| disk:|0.3504|1.0000| 22288| 22288|   680334| time:|   51|
+writeop: finishd 62880 ops out of 1859277, timepassed: 50 writecursor: 10447590
+total: |  1955495| kvcache: |0.6211|0.0000| 40030|  1188718| blockcache: |0.0334|1.0000|  2155|    64183| disk:|0.3454|1.0000| 22260| 22260|   702594| time:|   52|
+writeop: finishd 63677 ops out of 1922954, timepassed: 51 writecursor: 10447590
+writeop: finishd 61315 ops out of 1984269, timepassed: 52 writecursor: 10447590
+total: |  2017606| kvcache: |0.6208|0.9999| 38557|  1227275| blockcache: |0.0329|0.0000|  2043|    66226| disk:|0.3463|1.0000| 21511| 21511|   724105| time:|   53|
+total: |  2079990| kvcache: |0.6187|0.0000| 38598|  1265873| blockcache: |0.0326|1.0000|  2035|    68261| disk:|0.3487|1.0000| 21751| 21751|   745856| time:|   54|
+writeop: finishd 61598 ops out of 2045867, timepassed: 53 writecursor: 10447590
+writeop: finishd 61994 ops out of 2107861, timepassed: 54 writecursor: 10447590
+total: |  2142770| kvcache: |0.6152|0.0000| 38622|  1304495| blockcache: |0.0328|1.0000|  2057|    70318| disk:|0.3520|1.0000| 22101| 22101|   767957| time:|   55|
+total: |  2205584| kvcache: |0.6168|0.0000| 38742|  1343237| blockcache: |0.0320|1.0000|  2011|    72329| disk:|0.3512|1.0000| 22061| 22061|   790018| time:|   56|
+writeop: finishd 62034 ops out of 2169895, timepassed: 55 writecursor: 10447590
+total: |  2268590| kvcache: |0.6162|0.0000| 38826|  1382063| blockcache: |0.0329|1.0000|  2074|    74403| disk:|0.3509|1.0000| 22106| 22106|   812124| time:|   57|
+writeop: finishd 62259 ops out of 2232154, timepassed: 56 writecursor: 10447590
+total: |  2331748| kvcache: |0.6173|0.0000| 38987|  1421050| blockcache: |0.0317|1.0000|  2000|    76403| disk:|0.3510|1.0000| 22171| 22171|   834295| time:|   58|
+writeop: finishd 62484 ops out of 2294638, timepassed: 57 writecursor: 10447590
+total: |  2395121| kvcache: |0.6167|0.0000| 39084|  1460134| blockcache: |0.0316|1.0000|  2000|    78403| disk:|0.3517|1.0000| 22289| 22289|   856584| time:|   59|
+writeop: finishd 62566 ops out of 2357204, timepassed: 58 writecursor: 10447590
+total: |  2457782| kvcache: |0.6164|0.0000| 38624|  1498758| blockcache: |0.0313|1.0000|  1963|    80366| disk:|0.3523|1.0000| 22074| 22074|   878658| time:|   60|
+writeop: finishd 61879 ops out of 2419083, timepassed: 59 writecursor: 10447590
+total: |  2520502| kvcache: |0.6142|0.0000| 38524|  1537282| blockcache: |0.0329|1.0000|  2063|    82429| disk:|0.3529|1.0000| 22133| 22133|   900791| time:|   61|
+writeop: finishd 61953 ops out of 2481036, timepassed: 60 writecursor: 10447590
+total: |  2583985| kvcache: |0.6168|0.0000| 39159|  1576441| blockcache: |0.0331|1.0000|  2101|    84530| disk:|0.3501|1.0000| 22223| 22223|   923014| time:|   62|
+writeop: finishd 62687 ops out of 2543723, timepassed: 61 writecursor: 10447590
+total: |  2648421| kvcache: |0.6211|0.0000| 40024|  1616465| blockcache: |0.0325|1.0000|  2097|    86627| disk:|0.3463|1.0000| 22315| 22315|   945329| time:|   63|
+writeop: finishd 63691 ops out of 2607414, timepassed: 62 writecursor: 10447590
+writeop: finishd 62568 ops out of 2669982, timepassed: 63 writecursor: 10447590
+total: |  2711794| kvcache: |0.6160|0.9999| 39039|  1655504| blockcache: |0.0331|0.0000|  2095|    88722| disk:|0.3509|1.0000| 22239| 22239|   967568| time:|   64|
+total: |  2775617| kvcache: |0.6200|0.0000| 39572|  1695076| blockcache: |0.0312|1.0000|  1993|    90715| disk:|0.3487|1.0000| 22258| 22258|   989826| time:|   65|
+writeop: finishd 63080 ops out of 2733062, timepassed: 64 writecursor: 10447590
+total: |  2839173| kvcache: |0.6173|0.0000| 39234|  1734310| blockcache: |0.0315|1.0000|  2002|    92717| disk:|0.3512|1.0000| 22320| 22320|  1012146| time:|   66|
+writeop: finishd 62817 ops out of 2795879, timepassed: 65 writecursor: 10447590
+writeop: finishd 62660 ops out of 2858539, timepassed: 66 writecursor: 10447590
+total: |  2902603| kvcache: |0.6176|0.9999| 39177|  1773487| blockcache: |0.0327|0.0000|  2071|    94788| disk:|0.3497|1.0000| 22182| 22182|  1034328| time:|   67|
+total: |  2966041| kvcache: |0.6148|0.0000| 39003|  1812490| blockcache: |0.0332|1.0000|  2109|    96897| disk:|0.3519|1.0000| 22326| 22326|  1056654| time:|   68|
+writeop: finishd 62671 ops out of 2921210, timepassed: 67 writecursor: 10447590
+total: |  3029456| kvcache: |0.6175|0.0000| 39160|  1851650| blockcache: |0.0311|1.0000|  1972|    98869| disk:|0.3514|1.0000| 22283| 22283|  1078937| time:|   69|
+writeop: finishd 62658 ops out of 2983868, timepassed: 68 writecursor: 10447590
+total: |  3092847| kvcache: |0.6168|0.0000| 39101|  1890751| blockcache: |0.0323|1.0000|  2050|   100919| disk:|0.3508|1.0000| 22240| 22240|  1101177| time:|   70|
+writeop: finishd 62648 ops out of 3046516, timepassed: 69 writecursor: 10447590
+total: |  3156164| kvcache: |0.6158|0.9999| 38989|  1929740| blockcache: |0.0333|0.0000|  2110|   103029| disk:|0.3509|1.0000| 22218| 22218|  1123395| time:|   71|
+writeop: finishd 62552 ops out of 3109068, timepassed: 70 writecursor: 10447590
+writeop: finishd 62350 ops out of 3171418, timepassed: 71 writecursor: 10447590
+total: |  3219290| kvcache: |0.6156|0.9999| 38860|  1968600| blockcache: |0.0326|0.0000|  2055|   105084| disk:|0.3519|1.0000| 22211| 22211|  1145606| time:|   72|
+writeop: finishd 62858 ops out of 3234276, timepassed: 72 writecursor: 10447590
+total: |  3282918| kvcache: |0.6180|0.9999| 39319|  2007919| blockcache: |0.0322|0.0000|  2051|   107135| disk:|0.3498|1.0000| 22258| 22258|  1167864| time:|   73|
+total: |  3345359| kvcache: |0.6146|0.0000| 38379|  2046298| blockcache: |0.0343|1.0000|  2140|   109275| disk:|0.3511|1.0000| 21922| 21922|  1189786| time:|   74|
+writeop: finishd 61654 ops out of 3295930, timepassed: 73 writecursor: 10447590
+total: |  3408453| kvcache: |0.6165|0.0000| 38899|  2085197| blockcache: |0.0319|1.0000|  2011|   111286| disk:|0.3516|1.0000| 22184| 22184|  1211970| time:|   75|
+writeop: finishd 62344 ops out of 3358274, timepassed: 74 writecursor: 10447590
+total: |  3471649| kvcache: |0.6180|0.0000| 39052|  2124249| blockcache: |0.0323|1.0000|  2043|   113329| disk:|0.3497|1.0000| 22101| 22101|  1234071| time:|   76|
+writeop: finishd 62415 ops out of 3420689, timepassed: 75 writecursor: 10447590
+total: |  3534632| kvcache: |0.6168|0.0000| 38846|  2163095| blockcache: |0.0322|1.0000|  2031|   115360| disk:|0.3510|1.0000| 22106| 22106|  1256177| time:|   77|
+writeop: finishd 62242 ops out of 3482931, timepassed: 76 writecursor: 10447590
+total: |  3597377| kvcache: |0.6163|0.0000| 38668|  2201763| blockcache: |0.0336|1.0000|  2106|   117466| disk:|0.3502|1.0000| 21971| 21971|  1278148| time:|   78|
+writeop: finishd 62031 ops out of 3544962, timepassed: 77 writecursor: 10447590
+total: |  3660249| kvcache: |0.6172|0.0000| 38806|  2240569| blockcache: |0.0327|1.0000|  2059|   119525| disk:|0.3500|1.0000| 22007| 22007|  1300155| time:|   79|
+writeop: finishd 62099 ops out of 3607061, timepassed: 78 writecursor: 10447590
+total: |  3722900| kvcache: |0.6163|0.0000| 38613|  2279182| blockcache: |0.0325|1.0000|  2037|   121562| disk:|0.3512|1.0000| 22001| 22001|  1322156| time:|   80|
+writeop: finishd 61851 ops out of 3668912, timepassed: 79 writecursor: 10447590
+total: |  3785683| kvcache: |0.6180|0.0000| 38803|  2317985| blockcache: |0.0327|1.0000|  2051|   123613| disk:|0.3493|1.0000| 21929| 21929|  1344085| time:|   81|
+writeop: finishd 62047 ops out of 3730959, timepassed: 80 writecursor: 10447590
+total: |  3849107| kvcache: |0.6178|0.0000| 39181|  2357166| blockcache: |0.0321|1.0000|  2035|   125648| disk:|0.3502|1.0000| 22208| 22208|  1366293| time:|   82|
+writeop: finishd 62692 ops out of 3793651, timepassed: 81 writecursor: 10447590
+total: |  3913114| kvcache: |0.6190|0.0000| 39620|  2396786| blockcache: |0.0322|1.0000|  2059|   127707| disk:|0.3488|1.0000| 22328| 22328|  1388621| time:|   83|
+writeop: finishd 63236 ops out of 3856887, timepassed: 82 writecursor: 10447590
+total: |  3975285| kvcache: |0.6201|0.0000| 38554|  2435340| blockcache: |0.0324|1.0000|  2015|   129722| disk:|0.3475|1.0000| 21602| 21602|  1410223| time:|   84|
+writeop: finishd 61384 ops out of 3918271, timepassed: 83 writecursor: 10447590
+total: |  4035233| kvcache: |0.6157|0.0000| 36911|  2472251| blockcache: |0.0310|1.0000|  1859|   131581| disk:|0.3533|1.0000| 21178| 21178|  1431401| time:|   85|
+writeop: finishd 59236 ops out of 3977507, timepassed: 84 writecursor: 10447590
+total: |  4098584| kvcache: |0.6206|0.0000| 39317|  2511568| blockcache: |0.0311|1.0000|  1971|   133552| disk:|0.3483|1.0000| 22063| 22063|  1453464| time:|   86|
+writeop: finishd 62591 ops out of 4040098, timepassed: 85 writecursor: 10447590
+total: |  4162197| kvcache: |0.6171|0.0000| 39254|  2550822| blockcache: |0.0334|1.0000|  2126|   135678| disk:|0.3495|1.0000| 22233| 22233|  1475697| time:|   87|
+writeop: finishd 62900 ops out of 4102998, timepassed: 86 writecursor: 10447590
+total: |  4225044| kvcache: |0.6173|0.0000| 38796|  2589618| blockcache: |0.0320|1.0000|  2009|   137687| disk:|0.3507|1.0000| 22042| 22042|  1497739| time:|   88|
+writeop: finishd 62083 ops out of 4165081, timepassed: 87 writecursor: 10447590
+writeop: finishd 62637 ops out of 4227718, timepassed: 88 writecursor: 10447590
+total: |  4288404| kvcache: |0.6174|0.0000| 39120|  2628738| blockcache: |0.0318|1.0000|  2018|   139705| disk:|0.3507|1.0000| 22222| 22222|  1519961| time:|   89|
+total: |  4349743| kvcache: |0.6181|0.0000| 37911|  2666649| blockcache: |0.0321|1.0000|  1972|   141677| disk:|0.3498|1.0000| 21456| 21456|  1541417| time:|   90|
+writeop: finishd 60603 ops out of 4288321, timepassed: 89 writecursor: 10447590
+total: |  4411182| kvcache: |0.6161|0.0000| 37851|  2704500| blockcache: |0.0314|1.0000|  1930|   143607| disk:|0.3525|1.0000| 21658| 21658|  1563075| time:|   91|
+writeop: finishd 60689 ops out of 4349010, timepassed: 90 writecursor: 10447590
+total: |  4474932| kvcache: |0.6162|0.0000| 39281|  2743781| blockcache: |0.0324|1.0000|  2064|   145671| disk:|0.3515|1.0000| 22405| 22405|  1585480| time:|   92|
+writeop: finishd 62991 ops out of 4412001, timepassed: 91 writecursor: 10447590
+total: |  4538121| kvcache: |0.6158|0.0000| 38913|  2782694| blockcache: |0.0329|1.0000|  2077|   147748| disk:|0.3513|1.0000| 22199| 22199|  1607679| time:|   93|
+writeop: finishd 62447 ops out of 4474448, timepassed: 92 writecursor: 10447590
+total: |  4601535| kvcache: |0.6170|0.0000| 39127|  2821821| blockcache: |0.0330|1.0000|  2095|   149843| disk:|0.3500|1.0000| 22192| 22192|  1629871| time:|   94|
+writeop: finishd 62672 ops out of 4537120, timepassed: 93 writecursor: 10447590
+total: |  4664517| kvcache: |0.6145|0.0000| 38704|  2860525| blockcache: |0.0324|1.0000|  2042|   151885| disk:|0.3531|1.0000| 22236| 22236|  1652107| time:|   95|
+writeop: finishd 62211 ops out of 4599331, timepassed: 94 writecursor: 10447590
+total: |  4727774| kvcache: |0.6179|0.0000| 39088|  2899613| blockcache: |0.0324|1.0000|  2052|   153937| disk:|0.3496|1.0000| 22117| 22117|  1674224| time:|   96|
+writeop: finishd 62481 ops out of 4661812, timepassed: 95 writecursor: 10447590
+total: |  4790277| kvcache: |0.6146|0.0000| 38413|  2938026| blockcache: |0.0328|1.0000|  2053|   155990| disk:|0.3526|1.0000| 22037| 22037|  1696261| time:|   97|
+writeop: finishd 61710 ops out of 4723522, timepassed: 96 writecursor: 10447590
+total: |  4853844| kvcache: |0.6213|0.0000| 39491|  2977517| blockcache: |0.0329|1.0000|  2091|   158081| disk:|0.3459|1.0000| 21985| 21985|  1718246| time:|   98|
+writeop: finishd 62842 ops out of 4786364, timepassed: 97 writecursor: 10447590
+writeop: finishd 61805 ops out of 4848169, timepassed: 98 writecursor: 10447590
+total: |  4916377| kvcache: |0.6158|0.9999| 38510|  3016027| blockcache: |0.0320|0.0000|  1998|   160079| disk:|0.3522|1.0000| 22025| 22025|  1740271| time:|   99|
+writeop: finishd 63192 ops out of 4911361, timepassed: 99 writecursor: 10447590
+total: |  4980358| kvcache: |0.6176|0.9999| 39513|  3055540| blockcache: |0.0331|0.0000|  2115|   162194| disk:|0.3494|1.0000| 22353| 22353|  1762624| time:|  100|
+total: |  5041829| kvcache: |0.6148|0.0000| 37791|  3093331| blockcache: |0.0332|1.0000|  2041|   164235| disk:|0.3520|1.0000| 21639| 21639|  1784263| time:|  101|
+writeop: finishd 60692 ops out of 4972053, timepassed: 100 writecursor: 10447590
+total: |  5105061| kvcache: |0.6161|0.0000| 38960|  3132291| blockcache: |0.0335|1.0000|  2120|   166355| disk:|0.3503|1.0000| 22152| 22152|  1806415| time:|  102|
+writeop: finishd 62504 ops out of 5034557, timepassed: 101 writecursor: 10447590
+total: |  5168215| kvcache: |0.6171|0.0000| 38975|  3171266| blockcache: |0.0329|1.0000|  2079|   168434| disk:|0.3499|1.0000| 22100| 22100|  1828515| time:|  103|
+writeop: finishd 62405 ops out of 5096962, timepassed: 102 writecursor: 10447590
+total: |  5229869| kvcache: |0.6123|0.0000| 37748|  3209014| blockcache: |0.0325|1.0000|  2006|   170440| disk:|0.3552|1.0000| 21900| 21900|  1850415| time:|  104|
+writeop: finishd 60903 ops out of 5157865, timepassed: 103 writecursor: 10447590
+total: |  5292406| kvcache: |0.6150|0.0000| 38460|  3247474| blockcache: |0.0321|1.0000|  2006|   172446| disk:|0.3529|1.0000| 22071| 22071|  1872486| time:|  105|
+writeop: finishd 61742 ops out of 5219607, timepassed: 104 writecursor: 10447590
+writeop: finishd 63421 ops out of 5283028, timepassed: 105 writecursor: 10447590
+total: |  5356598| kvcache: |0.6183|0.0000| 39687|  3287161| blockcache: |0.0316|0.9999|  2030|   174476| disk:|0.3501|1.0000| 22475| 22475|  1894961| time:|  106|
+total: |  5419016| kvcache: |0.6155|0.0000| 38416|  3325577| blockcache: |0.0325|0.9999|  2029|   176505| disk:|0.3520|1.0000| 21973| 21973|  1916934| time:|  107|
+writeop: finishd 61636 ops out of 5344664, timepassed: 106 writecursor: 10447590
+total: |  5480483| kvcache: |0.6151|0.0000| 37806|  3363383| blockcache: |0.0309|1.0000|  1902|   178407| disk:|0.3540|1.0000| 21759| 21759|  1938693| time:|  108|
+writeop: finishd 60708 ops out of 5405372, timepassed: 107 writecursor: 10447590
+total: |  5544273| kvcache: |0.6161|0.0000| 39303|  3402686| blockcache: |0.0329|1.0000|  2099|   180506| disk:|0.3510|1.0000| 22388| 22388|  1961081| time:|  109|
+writeop: finishd 62959 ops out of 5468331, timepassed: 108 writecursor: 10447590
+total: |  5607495| kvcache: |0.6147|0.0000| 38860|  3441546| blockcache: |0.0329|1.0000|  2078|   182584| disk:|0.3525|1.0000| 22284| 22284|  1983365| time:|  110|
+writeop: finishd 62470 ops out of 5530801, timepassed: 109 writecursor: 10447590
+writeop: finishd 63163 ops out of 5593964, timepassed: 110 writecursor: 10447590
+total: |  5671504| kvcache: |0.6162|0.9999| 39445|  3480991| blockcache: |0.0329|0.0000|  2103|   184687| disk:|0.3509|1.0000| 22461| 22461|  2005826| time:|  111|
+total: |  5735081| kvcache: |0.6146|0.0000| 39073|  3520064| blockcache: |0.0333|1.0000|  2117|   186804| disk:|0.3521|1.0000| 22387| 22387|  2028213| time:|  112|
+writeop: finishd 62825 ops out of 5656789, timepassed: 111 writecursor: 10447590
+writeop: finishd 63691 ops out of 5720480, timepassed: 112 writecursor: 10447590
+total: |  5799507| kvcache: |0.6213|0.9999| 40030|  3560094| blockcache: |0.0319|0.0000|  2054|   188858| disk:|0.3468|1.0000| 22342| 22342|  2050555| time:|  113|
+total: |  5863710| kvcache: |0.6174|0.0000| 39637|  3599731| blockcache: |0.0333|1.0000|  2137|   190995| disk:|0.3493|1.0000| 22429| 22429|  2072984| time:|  114|
+writeop: finishd 63486 ops out of 5783966, timepassed: 113 writecursor: 10447590
+total: |  5928093| kvcache: |0.6161|0.0000| 39668|  3639399| blockcache: |0.0320|1.0000|  2058|   193053| disk:|0.3519|1.0000| 22657| 22657|  2095641| time:|  115|
+writeop: finishd 63574 ops out of 5847540, timepassed: 114 writecursor: 10447590
+total: |  5992730| kvcache: |0.6197|0.0000| 40058|  3679457| blockcache: |0.0328|1.0000|  2122|   195175| disk:|0.3474|1.0000| 22457| 22457|  2118098| time:|  116|
+writeop: finishd 63789 ops out of 5911329, timepassed: 115 writecursor: 10447590
+total: |  6057013| kvcache: |0.6195|0.0000| 39825|  3719282| blockcache: |0.0328|1.0000|  2106|   197281| disk:|0.3477|1.0000| 22352| 22352|  2140450| time:|  117|
+writeop: finishd 63567 ops out of 5974896, timepassed: 116 writecursor: 10447590
+total: |  6120738| kvcache: |0.6175|0.0000| 39350|  3758632| blockcache: |0.0318|1.0000|  2026|   199307| disk:|0.3507|1.0000| 22349| 22349|  2162799| time:|  118|
+writeop: finishd 63011 ops out of 6037907, timepassed: 117 writecursor: 10447590
+total: |  6184264| kvcache: |0.6172|0.0000| 39207|  3797839| blockcache: |0.0323|1.0000|  2052|   201359| disk:|0.3505|1.0000| 22267| 22267|  2185066| time:|  119|
+writeop: finishd 62775 ops out of 6100682, timepassed: 118 writecursor: 10447590
+total: |  6247221| kvcache: |0.6153|0.0000| 38736|  3836575| blockcache: |0.0323|1.0000|  2034|   203393| disk:|0.3524|1.0000| 22187| 22187|  2207253| time:|  120|
+writeop: finishd 62203 ops out of 6162885, timepassed: 119 writecursor: 10447590
+writeop: finishd 62676 ops out of 6225561, timepassed: 120 writecursor: 10447590
+total: |  6310683| kvcache: |0.6168|0.9999| 39144|  3875719| blockcache: |0.0332|0.0000|  2105|   205498| disk:|0.3500|1.0000| 22213| 22213|  2229466| time:|  121|
+writeop: finishd 62600 ops out of 6288161, timepassed: 121 writecursor: 10447590
+total: |  6373981| kvcache: |0.6154|0.9999| 38954|  3914673| blockcache: |0.0315|0.0000|  1994|   207492| disk:|0.3531|1.0000| 22350| 22350|  2251816| time:|  122|
+total: |  6437498| kvcache: |0.6162|0.0000| 39139|  3953812| blockcache: |0.0325|1.0000|  2064|   209556| disk:|0.3513|1.0000| 22314| 22314|  2274130| time:|  123|
+writeop: finishd 62720 ops out of 6350881, timepassed: 122 writecursor: 10447590
+total: |  6497441| kvcache: |0.6166|0.0000| 36960|  3990772| blockcache: |0.0322|1.0000|  1930|   211486| disk:|0.3512|1.0000| 21053| 21053|  2295183| time:|  124|
+writeop: finishd 59207 ops out of 6410088, timepassed: 123 writecursor: 10447590
+total: |  6555309| kvcache: |0.6148|0.0000| 35576|  4026348| blockcache: |0.0328|0.9999|  1900|   213386| disk:|0.3524|1.0000| 20392| 20392|  2315575| time:|  125|
+writeop: finishd 57222 ops out of 6467310, timepassed: 124 writecursor: 10447590
+total: |  6619101| kvcache: |0.6154|0.9999| 39256|  4065604| blockcache: |0.0330|0.0000|  2102|   215488| disk:|0.3517|1.0000| 22434| 22434|  2338009| time:|  126|
+writeop: finishd 63034 ops out of 6530344, timepassed: 125 writecursor: 10447590
+total: |  6683603| kvcache: |0.6159|0.0000| 39728|  4105332| blockcache: |0.0324|1.0000|  2090|   217578| disk:|0.3517|1.0000| 22684| 22684|  2360693| time:|  127|
+writeop: finishd 63688 ops out of 6594032, timepassed: 126 writecursor: 10447590
+total: |  6748468| kvcache: |0.6210|0.0000| 40280|  4145612| blockcache: |0.0320|1.0000|  2075|   219653| disk:|0.3470|1.0000| 22510| 22510|  2383203| time:|  128|
+writeop: finishd 64093 ops out of 6658125, timepassed: 127 writecursor: 10447590
+total: |  6812174| kvcache: |0.6167|0.0000| 39285|  4184897| blockcache: |0.0316|1.0000|  2011|   221664| disk:|0.3518|1.0000| 22410| 22410|  2405613| time:|  129|
+writeop: finishd 62944 ops out of 6721069, timepassed: 128 writecursor: 10447590
+total: |  6876167| kvcache: |0.6167|0.0000| 39462|  4224359| blockcache: |0.0321|1.0000|  2054|   223718| disk:|0.3512|1.0000| 22477| 22477|  2428090| time:|  130|
+writeop: finishd 63197 ops out of 6784266, timepassed: 129 writecursor: 10447590
+total: |  6938180| kvcache: |0.6134|0.0000| 38037|  4262396| blockcache: |0.0339|1.0000|  2105|   225823| disk:|0.3527|1.0000| 21871| 21871|  2449961| time:|  131|
+writeop: finishd 61285 ops out of 6845551, timepassed: 130 writecursor: 10447590
+total: |  7000930| kvcache: |0.6162|0.0000| 38664|  4301060| blockcache: |0.0326|1.0000|  2044|   227867| disk:|0.3513|1.0000| 22042| 22042|  2472003| time:|  132|
+writeop: finishd 61984 ops out of 6907535, timepassed: 131 writecursor: 10447590
+total: |  7064109| kvcache: |0.6154|0.0000| 38883|  4339943| blockcache: |0.0331|1.0000|  2090|   229957| disk:|0.3515|1.0000| 22206| 22206|  2494209| time:|  133|
+writeop: finishd 62417 ops out of 6969952, timepassed: 132 writecursor: 10447590
+total: |  7127203| kvcache: |0.6193|0.0000| 39076|  4379019| blockcache: |0.0321|1.0000|  2027|   231984| disk:|0.3485|1.0000| 21991| 21991|  2516200| time:|  134|
+writeop: finishd 62293 ops out of 7032245, timepassed: 133 writecursor: 10447590
+total: |  7191057| kvcache: |0.6189|0.0000| 39522|  4418541| blockcache: |0.0331|1.0000|  2112|   234096| disk:|0.3480|1.0000| 22220| 22220|  2538420| time:|  135|
+writeop: finishd 63099 ops out of 7095344, timepassed: 134 writecursor: 10447590
+total: |  7255025| kvcache: |0.6165|0.0000| 39437|  4457978| blockcache: |0.0327|1.0000|  2093|   236189| disk:|0.3508|1.0000| 22438| 22438|  2560858| time:|  136|
+writeop: finishd 63169 ops out of 7158513, timepassed: 135 writecursor: 10447590
+total: |  7318982| kvcache: |0.6169|0.0000| 39454|  4497432| blockcache: |0.0324|1.0000|  2073|   238262| disk:|0.3507|1.0000| 22430| 22430|  2583288| time:|  137|
+writeop: finishd 63179 ops out of 7221692, timepassed: 136 writecursor: 10447590
+total: |  7383189| kvcache: |0.6173|0.0000| 39636|  4537068| blockcache: |0.0320|1.0000|  2054|   240316| disk:|0.3507|1.0000| 22517| 22517|  2605805| time:|  138|
+writeop: finishd 63437 ops out of 7285129, timepassed: 137 writecursor: 10447590
+total: |  7448001| kvcache: |0.6178|0.0000| 40043|  4577111| blockcache: |0.0319|1.0000|  2065|   242381| disk:|0.3503|1.0000| 22704| 22704|  2628509| time:|  139|
+writeop: finishd 64040 ops out of 7349169, timepassed: 138 writecursor: 10447590
+total: |  7512235| kvcache: |0.6183|0.0000| 39715|  4616826| blockcache: |0.0322|1.0000|  2069|   244450| disk:|0.3495|1.0000| 22450| 22450|  2650959| time:|  140|
+writeop: finishd 63499 ops out of 7412668, timepassed: 139 writecursor: 10447590
+total: |  7577071| kvcache: |0.6184|0.0000| 40092|  4656918| blockcache: |0.0316|1.0000|  2047|   246497| disk:|0.3501|1.0000| 22697| 22697|  2673656| time:|  141|
+writeop: finishd 64010 ops out of 7476678, timepassed: 140 writecursor: 10447590
+writeop: finishd 63954 ops out of 7540632, timepassed: 141 writecursor: 10447590
+total: |  7641787| kvcache: |0.6174|0.9999| 39953|  4696871| blockcache: |0.0326|0.0000|  2110|   248607| disk:|0.3500|1.0000| 22653| 22653|  2696309| time:|  142|
+total: |  7705768| kvcache: |0.6174|0.0000| 39502|  4736373| blockcache: |0.0329|1.0000|  2103|   250710| disk:|0.3497|1.0000| 22376| 22376|  2718685| time:|  143|
+writeop: finishd 63230 ops out of 7603862, timepassed: 142 writecursor: 10447590
+total: |  7770278| kvcache: |0.6170|0.0000| 39802|  4776175| blockcache: |0.0322|1.0000|  2074|   252784| disk:|0.3509|1.0000| 22634| 22634|  2741319| time:|  144|
+writeop: finishd 63746 ops out of 7667608, timepassed: 143 writecursor: 10447590
+total: |  7833027| kvcache: |0.6133|0.0000| 38484|  4814659| blockcache: |0.0328|1.0000|  2056|   254840| disk:|0.3539|1.0000| 22209| 22209|  2763528| time:|  145|
+writeop: finishd 61974 ops out of 7729582, timepassed: 144 writecursor: 10447590
+total: |  7897226| kvcache: |0.6179|0.9999| 39667|  4854326| blockcache: |0.0325|0.0000|  2087|   256927| disk:|0.3496|1.0000| 22445| 22445|  2785973| time:|  146|
+writeop: finishd 63439 ops out of 7793021, timepassed: 145 writecursor: 10447590
+total: |  7961990| kvcache: |0.6204|0.0000| 40177|  4894503| blockcache: |0.0325|1.0000|  2107|   259034| disk:|0.3471|1.0000| 22480| 22480|  2808453| time:|  147|
+writeop: finishd 64009 ops out of 7857030, timepassed: 146 writecursor: 10447590
+total: |  8026835| kvcache: |0.6218|0.0000| 40320|  4934823| blockcache: |0.0308|1.0000|  2000|   261034| disk:|0.3474|1.0000| 22525| 22525|  2830978| time:|  148|
+writeop: finishd 64082 ops out of 7921112, timepassed: 147 writecursor: 10447590
+total: |  8090291| kvcache: |0.6137|0.0000| 38940|  4973763| blockcache: |0.0316|1.0000|  2006|   263040| disk:|0.3547|1.0000| 22510| 22510|  2853488| time:|  149|
+writeop: finishd 62668 ops out of 7983780, timepassed: 148 writecursor: 10447590
+total: |  8154410| kvcache: |0.6156|0.0000| 39470|  5013233| blockcache: |0.0320|1.0000|  2054|   265094| disk:|0.3524|1.0000| 22595| 22595|  2876083| time:|  150|
+writeop: finishd 63304 ops out of 8047084, timepassed: 149 writecursor: 10447590
+writeop: finishd 63019 ops out of 8110103, timepassed: 150 writecursor: 10447590
+total: |  8218222| kvcache: |0.6169|0.9999| 39364|  5052597| blockcache: |0.0327|0.0000|  2089|   267183| disk:|0.3504|1.0000| 22359| 22359|  2898442| time:|  151|
+total: |  8280873| kvcache: |0.6116|0.0000| 38318|  5090915| blockcache: |0.0328|1.0000|  2053|   269236| disk:|0.3556|1.0000| 22280| 22280|  2920722| time:|  152|
+writeop: finishd 61862 ops out of 8171965, timepassed: 151 writecursor: 10447590
+total: |  8345135| kvcache: |0.6168|0.0000| 39638|  5130553| blockcache: |0.0327|1.0000|  2103|   271339| disk:|0.3505|1.0000| 22521| 22521|  2943243| time:|  153|
+writeop: finishd 63481 ops out of 8235446, timepassed: 152 writecursor: 10447590
+total: |  8409493| kvcache: |0.6162|0.0000| 39657|  5170210| blockcache: |0.0329|1.0000|  2119|   273458| disk:|0.3509|1.0000| 22582| 22582|  2965825| time:|  154|
+writeop: finishd 63594 ops out of 8299040, timepassed: 153 writecursor: 10447590
+total: |  8473948| kvcache: |0.6169|0.0000| 39761|  5209971| blockcache: |0.0324|1.0000|  2087|   275545| disk:|0.3507|1.0000| 22607| 22607|  2988432| time:|  155|
+writeop: finishd 63673 ops out of 8362713, timepassed: 154 writecursor: 10447590
+total: |  8538257| kvcache: |0.6165|0.0000| 39649|  5249620| blockcache: |0.0316|1.0000|  2029|   277574| disk:|0.3519|1.0000| 22631| 22631|  3011063| time:|  156|
+writeop: finishd 63542 ops out of 8426255, timepassed: 155 writecursor: 10447590
+total: |  8602854| kvcache: |0.6147|0.0000| 39708|  5289328| blockcache: |0.0322|1.0000|  2082|   279656| disk:|0.3531|1.0000| 22807| 22807|  3033870| time:|  157|
+writeop: finishd 63748 ops out of 8490003, timepassed: 156 writecursor: 10447590
+total: |  8666809| kvcache: |0.6157|0.0000| 39376|  5328704| blockcache: |0.0329|1.0000|  2107|   281763| disk:|0.3514|1.0000| 22472| 22472|  3056342| time:|  158|
+writeop: finishd 63193 ops out of 8553196, timepassed: 157 writecursor: 10447590
+total: |  8731949| kvcache: |0.6178|0.0000| 40243|  5368947| blockcache: |0.0328|1.0000|  2138|   283901| disk:|0.3494|1.0000| 22759| 22759|  3079101| time:|  159|
+writeop: finishd 64281 ops out of 8617477, timepassed: 158 writecursor: 10447590
+total: |  8797146| kvcache: |0.6201|0.9999| 40428|  5409375| blockcache: |0.0319|0.0000|  2078|   285979| disk:|0.3480|1.0000| 22691| 22691|  3101792| time:|  160|
+writeop: finishd 64428 ops out of 8681905, timepassed: 159 writecursor: 10447590
+total: |  8862292| kvcache: |0.6186|0.0000| 40297|  5449672| blockcache: |0.0323|1.0000|  2106|   288085| disk:|0.3491|1.0000| 22743| 22743|  3124535| time:|  161|
+writeop: finishd 64349 ops out of 8746254, timepassed: 160 writecursor: 10447590
+total: |  8926316| kvcache: |0.6172|0.0000| 39514|  5489186| blockcache: |0.0304|1.0000|  1949|   290034| disk:|0.3524|1.0000| 22561| 22561|  3147096| time:|  162|
+writeop: finishd 63217 ops out of 8809471, timepassed: 161 writecursor: 10447590
+total: |  8990862| kvcache: |0.6170|0.0000| 39826|  5529012| blockcache: |0.0317|1.0000|  2045|   292079| disk:|0.3513|1.0000| 22675| 22675|  3169771| time:|  163|
+writeop: finishd 63771 ops out of 8873242, timepassed: 162 writecursor: 10447590
+total: |  9054927| kvcache: |0.6147|0.0000| 39381|  5568393| blockcache: |0.0322|1.0000|  2062|   294141| disk:|0.3531|1.0000| 22622| 22622|  3192393| time:|  164|
+writeop: finishd 63309 ops out of 8936551, timepassed: 163 writecursor: 10447590
+writeop: finishd 63791 ops out of 9000342, timepassed: 164 writecursor: 10447590
+total: |  9119559| kvcache: |0.6146|0.0000| 39722|  5608115| blockcache: |0.0332|1.0000|  2145|   296286| disk:|0.3522|1.0000| 22765| 22765|  3215158| time:|  165|
+total: |  9183981| kvcache: |0.6171|0.0000| 39752|  5647867| blockcache: |0.0328|1.0000|  2111|   298397| disk:|0.3502|1.0000| 22559| 22559|  3237717| time:|  166|
+writeop: finishd 63617 ops out of 9063959, timepassed: 165 writecursor: 10447590
+total: |  9244163| kvcache: |0.6196|0.0000| 37291|  5685158| blockcache: |0.0315|1.0000|  1894|   300291| disk:|0.3489|1.0000| 20997| 20997|  3258714| time:|  167|
+writeop: finishd 59484 ops out of 9123443, timepassed: 166 writecursor: 10447590
+total: |  9307755| kvcache: |0.6192|0.0000| 39377|  5724535| blockcache: |0.0326|1.0000|  2072|   302363| disk:|0.3482|1.0000| 22143| 22143|  3280857| time:|  168|
+writeop: finishd 62747 ops out of 9186190, timepassed: 167 writecursor: 10447590
+total: |  9371920| kvcache: |0.6148|0.0000| 39447|  5763982| blockcache: |0.0332|1.0000|  2133|   304496| disk:|0.3520|1.0000| 22585| 22585|  3303442| time:|  169|
+writeop: finishd 63414 ops out of 9249604, timepassed: 168 writecursor: 10447590
+total: |  9436424| kvcache: |0.6155|0.0000| 39703|  5803685| blockcache: |0.0324|1.0000|  2089|   306585| disk:|0.3521|1.0000| 22712| 22712|  3326154| time:|  170|
+writeop: finishd 63725 ops out of 9313329, timepassed: 169 writecursor: 10447590
+total: |  9500721| kvcache: |0.6197|0.0000| 39847|  5843532| blockcache: |0.0323|1.0000|  2078|   308663| disk:|0.3479|1.0000| 22372| 22372|  3348526| time:|  171|
+writeop: finishd 63556 ops out of 9376885, timepassed: 170 writecursor: 10447590
+total: |  9565351| kvcache: |0.6187|0.0000| 39985|  5883517| blockcache: |0.0329|1.0000|  2124|   310787| disk:|0.3485|1.0000| 22521| 22521|  3371047| time:|  172|
+writeop: finishd 63850 ops out of 9440735, timepassed: 171 writecursor: 10447590
+total: |  9630315| kvcache: |0.6179|0.0000| 40141|  5923658| blockcache: |0.0325|1.0000|  2113|   312900| disk:|0.3496|1.0000| 22710| 22710|  3393757| time:|  173|
+writeop: finishd 64189 ops out of 9504924, timepassed: 172 writecursor: 10447590
+total: |  9694821| kvcache: |0.6155|0.0000| 39702|  5963360| blockcache: |0.0322|1.0000|  2077|   314977| disk:|0.3523|1.0000| 22727| 22727|  3416484| time:|  174|
+writeop: finishd 63658 ops out of 9568582, timepassed: 173 writecursor: 10447590
+total: |  9759422| kvcache: |0.6156|0.0000| 39766|  6003126| blockcache: |0.0309|1.0000|  1996|   316973| disk:|0.3535|1.0000| 22839| 22839|  3439323| time:|  175|
+writeop: finishd 63795 ops out of 9632377, timepassed: 174 writecursor: 10447590
+total: |  9821880| kvcache: |0.6189|0.0000| 38655|  6041781| blockcache: |0.0322|1.0000|  2009|   318982| disk:|0.3489|1.0000| 21794| 21794|  3461117| time:|  176|
+writeop: finishd 61763 ops out of 9694140, timepassed: 175 writecursor: 10447590
+total: |  9884954| kvcache: |0.6144|0.9999| 38751|  6080532| blockcache: |0.0331|0.0000|  2090|   321072| disk:|0.3525|1.0000| 22233| 22233|  3483350| time:|  177|
+writeop: finishd 62290 ops out of 9756430, timepassed: 176 writecursor: 10447590
+total: |  9949568| kvcache: |0.6205|0.0000| 40093|  6120625| blockcache: |0.0326|1.0000|  2107|   323179| disk:|0.3469|1.0000| 22414| 22414|  3505764| time:|  178|
+writeop: finishd 63871 ops out of 9820301, timepassed: 177 writecursor: 10447590
+total: | 10013247| kvcache: |0.6153|0.0000| 39182|  6159807| blockcache: |0.0324|1.0000|  2062|   325241| disk:|0.3523|1.0000| 22435| 22435|  3528199| time:|  179|
+writeop: finishd 62889 ops out of 9883190, timepassed: 178 writecursor: 10447590
+total: | 10077145| kvcache: |0.6166|0.0000| 39399|  6199206| blockcache: |0.0328|1.0000|  2094|   327335| disk:|0.3506|1.0000| 22405| 22405|  3550604| time:|  180|
+writeop: finishd 63140 ops out of 9946330, timepassed: 179 writecursor: 10447590
+total: | 10139446| kvcache: |0.6175|0.0000| 38472|  6237678| blockcache: |0.0322|1.0000|  2009|   329344| disk:|0.3502|1.0000| 21820| 21820|  3572424| time:|  181|
+writeop: finishd 61504 ops out of 10007834, timepassed: 180 writecursor: 10447590
+total: | 10203512| kvcache: |0.6166|0.0000| 39505|  6277183| blockcache: |0.0325|1.0000|  2084|   331428| disk:|0.3508|1.0000| 22477| 22477|  3594901| time:|  182|
+writeop: finishd 63298 ops out of 10071132, timepassed: 181 writecursor: 10447590
+total: | 10267943| kvcache: |0.6199|0.0000| 39943|  6317126| blockcache: |0.0317|1.0000|  2042|   333470| disk:|0.3484|1.0000| 22446| 22446|  3617347| time:|  183|
+writeop: finishd 63636 ops out of 10134768, timepassed: 182 writecursor: 10447590
+total: | 10332329| kvcache: |0.6191|0.0000| 39862|  6356988| blockcache: |0.0323|1.0000|  2077|   335547| disk:|0.3486|1.0000| 22447| 22447|  3639794| time:|  184|
+writeop: finishd 63586 ops out of 10198354, timepassed: 183 writecursor: 10447590
+total: | 10396625| kvcache: |0.6178|0.0000| 39721|  6396709| blockcache: |0.0322|1.0000|  2068|   337615| disk:|0.3501|1.0000| 22507| 22507|  3662301| time:|  185|
+writeop: finishd 63523 ops out of 10261877, timepassed: 184 writecursor: 10447590
+total: | 10460495| kvcache: |0.6188|0.0000| 39521|  6436230| blockcache: |0.0332|1.0000|  2122|   339737| disk:|0.3480|1.0000| 22227| 22227|  3684528| time:|  186|
+writeop: finishd 63106 ops out of 10324983, timepassed: 185 writecursor: 10447590
+total: | 10524549| kvcache: |0.6215|0.0000| 39807|  6476037| blockcache: |0.0311|1.0000|  1989|   341726| disk:|0.3475|1.0000| 22258| 22258|  3706786| time:|  187|
+writeop: finishd 63292 ops out of 10388275, timepassed: 186 writecursor: 10447590
+writeop: finishd 62746 ops out of 10451021, timepassed: 187 writecursor: 10447590
+total: | 10588064| kvcache: |0.6157|0.9999| 39105|  6515142| blockcache: |0.0315|0.0000|  1998|   343724| disk:|0.3529|1.0000| 22412| 22412|  3729198| time:|  188|
+completes 10485760 read ops (out of 0) in 187.000 seconds, 10483145 found
+completes 0 write ops in 187.000 seconds
+completes 0 range ops in 187.000 seconds
+mix          :      17.914 micros/op;	  55822.386 ops/s (10483145 of 10485760 found in one read thread)
+Microseconds per op:
+Count: 10485760  Average: 17.9140  StdDev: 366.88
+Min: 0.0000  Median: 1.9265  Max: 1124514.0000
+------------------------------------------------------
+[       0,       1 )  599576   5.718%   5.718% #
+[       1,       2 ) 5011803  47.796%  53.514% ##########
+[       2,       3 )  897563   8.560%  62.074% ##
+[       3,       4 )   17770   0.169%  62.244% 
+[       4,       5 )    4652   0.044%  62.288% 
+[       5,       6 )    1228   0.012%  62.300% 
+[       6,       7 )    3801   0.036%  62.336% 
+[       7,       8 )   15191   0.145%  62.481% 
+[       8,       9 )   24267   0.231%  62.712% 
+[       9,      10 )   25682   0.245%  62.957% 
+[      10,      12 )   85066   0.811%  63.768% 
+[      12,      14 )   86671   0.827%  64.595% 
+[      14,      16 )  168125   1.603%  66.198% 
+[      16,      18 )  411933   3.928%  70.127% #
+[      18,      20 )  442894   4.224%  74.351% #
+[      20,      25 )  338807   3.231%  77.582% #
+[      25,      30 )   67601   0.645%  78.226% 
+[      30,      35 )   42447   0.405%  78.631% 
+[      35,      40 )  186201   1.776%  80.407% 
+[      40,      45 )  552593   5.270%  85.677% #
+[      45,      50 )  207323   1.977%  87.654% 
+[      50,      60 )   94943   0.905%  88.560% 
+[      60,      70 )  524519   5.002%  93.562% #
+[      70,      80 )   79052   0.754%  94.316% 
+[      80,      90 )  391222   3.731%  98.047% #
+[      90,     100 )   70266   0.670%  98.717% 
+[     100,     120 )   29362   0.280%  98.997% 
+[     120,     140 )   18011   0.172%  99.168% 
+[     140,     160 )   13927   0.133%  99.301% 
+[     160,     180 )   11667   0.111%  99.413% 
+[     180,     200 )   11516   0.110%  99.522% 
+[     200,     250 )   25163   0.240%  99.762% 
+[     250,     300 )   18766   0.179%  99.941% 
+[     300,     350 )    4488   0.043%  99.984% 
+[     350,     400 )     715   0.007%  99.991% 
+[     400,     450 )     307   0.003%  99.994% 
+[     450,     500 )     216   0.002%  99.996% 
+[     500,     600 )     275   0.003%  99.999% 
+[     600,     700 )      77   0.001%  99.999% 
+[     700,     800 )      13   0.000%  99.999% 
+[     800,     900 )       7   0.000%  99.999% 
+[     900,    1000 )       2   0.000% 100.000% 
+[    1000,    1200 )      19   0.000% 100.000% 
+[    1200,    1400 )       9   0.000% 100.000% 
+[    1400,    1600 )       2   0.000% 100.000% 
+[    1600,    1800 )       2   0.000% 100.000% 
+[    1800,    2000 )       1   0.000% 100.000% 
+[    2000,    2500 )       1   0.000% 100.000% 
+[    2500,    3000 )       4   0.000% 100.000% 
+[    3000,    3500 )       1   0.000% 100.000% 
+[    3500,    4000 )       1   0.000% 100.000% 
+[    4500,    5000 )       6   0.000% 100.000% 
+[    5000,    6000 )       2   0.000% 100.000% 
+[   16000,   18000 )       1   0.000% 100.000% 
+[   60000,   70000 )       1   0.000% 100.000% 
+[  350000,  400000 )       1   0.000% 100.000% 
+[ 1000000, 1200000 )       1   0.000% 100.000% 
+
+Microseconds per ReadOp:
+Count: 10485760  Average: 17.8452  StdDev: 366.87
+Min: 0.0000  Median: 1.8903  Max: 1124507.0000
+------------------------------------------------------
+[       0,       1 )  784451   7.481%   7.481% #
+[       1,       2 ) 5007981  47.760%  55.241% ##########
+[       2,       3 )  719276   6.860%  62.100% #
+[       3,       4 )   15851   0.151%  62.252% 
+[       4,       5 )    4061   0.039%  62.290% 
+[       5,       6 )    1157   0.011%  62.301% 
+[       6,       7 )    4489   0.043%  62.344% 
+[       7,       8 )   16004   0.153%  62.497% 
+[       8,       9 )   24519   0.234%  62.731% 
+[       9,      10 )   26154   0.249%  62.980% 
+[      10,      12 )   86696   0.827%  63.807% 
+[      12,      14 )   86899   0.829%  64.636% 
+[      14,      16 )  174554   1.665%  66.300% 
+[      16,      18 )  423564   4.039%  70.340% #
+[      18,      20 )  432082   4.121%  74.460% #
+[      20,      25 )  329297   3.140%  77.601% #
+[      25,      30 )   66609   0.635%  78.236% 
+[      30,      35 )   42549   0.406%  78.642% 
+[      35,      40 )  191454   1.826%  80.468% 
+[      40,      45 )  555103   5.294%  85.762% #
+[      45,      50 )  199541   1.903%  87.665% 
+[      50,      60 )   96098   0.916%  88.581% 
+[      60,      70 )  523623   4.994%  93.575% #
+[      70,      80 )   79166   0.755%  94.330% 
+[      80,      90 )  391692   3.735%  98.065% #
+[      90,     100 )   68670   0.655%  98.720% 
+[     100,     120 )   29144   0.278%  98.998% 
+[     120,     140 )   17997   0.172%  99.170% 
+[     140,     160 )   13902   0.133%  99.302% 
+[     160,     180 )   11658   0.111%  99.413% 
+[     180,     200 )   11496   0.110%  99.523% 
+[     200,     250 )   25161   0.240%  99.763% 
+[     250,     300 )   18769   0.179%  99.942% 
+[     300,     350 )    4431   0.042%  99.984% 
+[     350,     400 )     715   0.007%  99.991% 
+[     400,     450 )     307   0.003%  99.994% 
+[     450,     500 )     216   0.002%  99.996% 
+[     500,     600 )     273   0.003%  99.999% 
+[     600,     700 )      77   0.001%  99.999% 
+[     700,     800 )      13   0.000%  99.999% 
+[     800,     900 )       7   0.000%  99.999% 
+[     900,    1000 )       3   0.000% 100.000% 
+[    1000,    1200 )      18   0.000% 100.000% 
+[    1200,    1400 )       9   0.000% 100.000% 
+[    1400,    1600 )       2   0.000% 100.000% 
+[    1600,    1800 )       2   0.000% 100.000% 
+[    1800,    2000 )       1   0.000% 100.000% 
+[    2000,    2500 )       1   0.000% 100.000% 
+[    2500,    3000 )       4   0.000% 100.000% 
+[    3000,    3500 )       1   0.000% 100.000% 
+[    3500,    4000 )       1   0.000% 100.000% 
+[    4500,    5000 )       6   0.000% 100.000% 
+[    5000,    6000 )       2   0.000% 100.000% 
+[   16000,   18000 )       1   0.000% 100.000% 
+[   60000,   70000 )       1   0.000% 100.000% 
+[  350000,  400000 )       1   0.000% 100.000% 
+[ 1000000, 1200000 )       1   0.000% 100.000% 
+

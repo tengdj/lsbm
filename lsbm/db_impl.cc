@@ -10,11 +10,11 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <vector>
-#include "leveldb/db.h"
-#include "leveldb/env.h"
-#include "leveldb/status.h"
-#include "leveldb/table.h"
-#include "leveldb/table_builder.h"
+#include "lsbm/db.h"
+#include "lsbm/env.h"
+#include "lsbm/status.h"
+#include "lsbm/table.h"
+#include "lsbm/table_builder.h"
 #include "port/port.h"
 #include "table/block.h"
 #include "table/merger.h"
@@ -22,7 +22,7 @@
 #include "util/coding.h"
 #include "util/logging.h"
 #include "util/mutexlock.h"
-#include "leveldb/cache.h"
+#include "lsbm/cache.h"
 
 #include "util/cache_stat.h"
 #include <iostream>

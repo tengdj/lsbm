@@ -8,15 +8,15 @@
 #include <iostream>
 #include <algorithm>
 #include <stdio.h>
-#include "leveldb/env.h"
-#include "leveldb/table_builder.h"
+#include "lsbm/env.h"
+#include "lsbm/table_builder.h"
 #include "table/merger.h"
 #include "table/two_level_iterator.h"
 #include "util/coding.h"
 #include "util/logging.h"
 #include <iostream>
 
-#include "leveldb/params.h"
+#include "lsbm/params.h"
 #include "filename.h"
 #include "log_reader.h"
 #include "log_writer.h"
@@ -1461,7 +1461,10 @@ void Version::printVersion(){
 	  uint64_t dbsize = 0;
 	  //int max = config::kNumLevels-1;
 	  int max = runtime::max_print_level;
-	  for(;max>=0;max--){//last level contains files
+	  // 
+	  for(;max>=0;max--){
+		   //last level contains files，输出信息的最后一层还有文件的话就 break
+		   // 找到小于 max_print_level 的最大层（包含文件的层）
 	  	   if(levels_[max][DELETION_PART]->files_.size()+levels_[max][INSERTION_PART]->files_.size()!=0){
 	  		   break;
 	  	   }
@@ -1469,15 +1472,18 @@ void Version::printVersion(){
 
 	  int counter = 0;
 	  for(int level=0;level<=max;level++){
+		  // 如果 Buffer 文件大小为 0 那么跳过该层，即 buffer 为空
 	      if(this->NumFiles(level)+this->NumPartFiles(level,COMPACTION_BUFFER)==0){
 	    	  continue;
 	      }
+		  	// 否则输出 level
 	      	fprintf(stderr,"level:%d\n",level);
 	      	fprintf(stderr,"deletion part: ");
 	      	SortedTable *head = levels_[level][DELETION_PART];
 	      	SortedTable *cur = head;
 	      	counter = 0;
 	      	do{
+				// 输出 delete part 信息
 	      		uint64_t totalsize = this->TotalPartSize(level,DELETION_PART);
 	      		if(runtime::compaction_buffer_use_length[level]==0){
 	      			dbsize += totalsize;
@@ -2373,6 +2379,9 @@ Compaction* BasicVersionSet::PickCompaction() {
     	}
 
     }else{
+		// 其他 level
+
+		// 将当前 level 等待被 Compaction 的文件大小累加起来
     	uint64_t cummulate = 0;
     	auto files = current_->levels_[level][DELETION_PART]->files_;
     	Slice cursor;
@@ -2385,6 +2394,7 @@ Compaction* BasicVersionSet::PickCompaction() {
 
             cursor = files[i]->largest.user_key();
 
+			// 达到阈值则可以进行 Compaction
             if(level<3 && cummulate>=config::data_merged_each_round){
             	break;
             }
